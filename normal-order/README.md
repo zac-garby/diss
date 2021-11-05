@@ -1,4 +1,4 @@
-# pure
+# normal order
 
 This folder contains an implementation of a "pure" lambda calculus but with normal-order reduction. The changes are very, very minimal:
 
