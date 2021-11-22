@@ -13,6 +13,8 @@ type Name = String
 data Term = Var Name
           | Abs Name Term
           | App Term Term
+          | Let Name Term Term
+          | IntLit Int
           deriving (Eq, Show)
 
 parseTerm1 = fromJust . parseTerm
@@ -25,16 +27,27 @@ parseTerm s = case readP_to_S (space *> termP <* eof) s of
 {-
 GRAMMAR:
 
-  term ::= abs | app
+  term ::= let name = term in term | abs | app
   abs  ::= ('\' | 'λ') name '.' term
-  app  ::= { var | bracket }
-
+  app  ::= { atom }
+  atom ::= var | bracket | int
+  
   bracket ::= '(' term ')'
-  name    ::= string of letters
+  name    ::= string of non-space chars except "().\λ" or "let" or "in"
 -}
 
 termP :: ReadP Term
-termP = choice [absP, appP]
+termP = choice [letP, absP, appP]
+
+letP :: ReadP Term
+letP = do
+  string "let" <* space
+  n <- nameP <* space
+  char '=' <* space
+  val <- termP <* space
+  string "in" <* space
+  body <- termP
+  return $ Let n val body
 
 absP :: ReadP Term
 absP = do
@@ -45,7 +58,10 @@ absP = do
   return $ Abs n t
 
 appP :: ReadP Term
-appP = chainl1 (choice [varP, bracketP]) (space >> return App)
+appP = chainl1 atomP (space >> return App)
+
+atomP :: ReadP Term
+atomP = choice [intP, varP, bracketP]
 
 bracketP :: ReadP Term
 bracketP = do
@@ -57,8 +73,21 @@ bracketP = do
 varP :: ReadP Term
 varP = Var <$> nameP
 
+intP :: ReadP Term
+intP = IntLit . read <$> munch1 isDigit
+
 nameP :: ReadP Name
-nameP = munch1 isLetter
+nameP = do
+  n <- munch1 validNameChar
+  guard $ not (n `elem` ["λ", "\\", "let", "in"])
+  return n
+
+validNameChar '(' = False
+validNameChar ')' = False
+validNameChar '.' = False
+validNameChar '\\' = False
+validNameChar 'λ' = False
+validNameChar c = not (isSpace c)
 
 space :: ReadP ()
 space = skipMany (satisfy isSpace)

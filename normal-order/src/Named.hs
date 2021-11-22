@@ -18,7 +18,7 @@ data Term = Var Name
 parseTerm1 = fromJust . parseTerm
 
 parseTerm :: String -> Maybe Term
-parseTerm s = case readP_to_S (space *> termP <* eof) s of
+parseTerm s = case readP_to_S (space *> termP <* space <* eof) s of
   ((t, _):_) -> Just t
   _ -> Nothing
 

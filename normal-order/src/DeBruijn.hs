@@ -15,18 +15,23 @@ data Term = Var Index
           | App Term Term
           deriving Eq
 
-type Names = [String]
+type Names = [Name]
 
 app :: [Term] -> Term
 app = foldl1 App
 
 showTerm :: Names -> Term -> String
-showTerm ns t = showTerm' ns False t
+showTerm ns (Var i) = ns !! i
+showTerm ns (Abs n t) = "λ" ++ n ++ "." ++ showTerm (n : ns) t
+showTerm ns (App f x) = concat [ bracket (isAbs f) (showTerm ns f)
+                               , " "
+                               , bracket (isApp x || isAbs x) (showTerm ns x) ]
 
-showTerm' :: Names -> Bool -> Term -> String
-showTerm' ns b (Var i) = ns !! i
-showTerm' ns b (Abs n t) = bracket b $ "λ" ++ n ++ "." ++ showTerm' (n : ns) False t
-showTerm' ns b (App f x) = bracket b (showTerm' ns True f ++ " " ++ showTerm' ns True x)
+isAbs (Abs _ _) = True
+isAbs _ = False
+
+isApp (App _ _) = True
+isApp _ = False
 
 bracket :: Bool -> String -> String
 bracket True s = "(" ++ s ++ ")"
@@ -74,18 +79,14 @@ evalApp1 (App t1 t2) = do
 evalApp1 _ = Nothing
 
 evalApp2 :: Term -> Maybe Term
-evalApp2 (App v1 t2) | isValue v1 = do
+evalApp2 (App t1 t2) = do
   t2' <- evalStep t2
-  return $ App v1 t2'
+  return $ App t1 t2'
 evalApp2 _ = Nothing
 
 evalAppAbs :: Term -> Maybe Term
 evalAppAbs (App (Abs _ t12) v2) = return $ shift (-1) ((0 --> shift 1 v2) t12)
 evalAppAbs _ = Nothing
-
-isValue :: Term -> Bool
-isValue (Abs _ _) = True
-isValue _ = False
 
 shift :: Int -> Term -> Term
 shift d = shift' d 0

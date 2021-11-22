@@ -1,0 +1,62 @@
+cabal-version:      2.4
+name:               normal-order
+version:            0.1.0.0
+synopsis:
+
+-- A longer description of the package.
+-- description:
+homepage:
+
+-- A URL where users can report bugs.
+-- bug-reports:
+license:            GPL-3.0-only
+license-file:       LICENSE
+author:             Zac Garby
+maintainer:         me@zacgarby.co.uk
+
+-- A copyright notice.
+-- copyright:
+category:           Language
+extra-source-files:
+    CHANGELOG.md
+    README.md
+
+library
+    exposed-modules: Named
+                   , DeBruijn
+                   , Env
+
+    -- Modules included in this library but not exported.
+    -- other-modules:
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:    base ^>=4.14.3.0
+    hs-source-dirs:   src
+    default-language: Haskell2010
+
+executable normal-order
+    main-is:          Main.hs
+
+    -- Modules included in this executable, other than Main.
+    -- other-modules:
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:
+        base ^>=4.14.3.0,
+        normal-order
+
+    -- Directories containing source files.
+    -- hs-source-dirs:
+    default-language: Haskell2010
+
+test-suite normal-order-test
+    default-language: Haskell2010
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Test.hs
+    build-depends:    base ^>=4.14.3.0
+                    , QuickCheck ^>=2.14.2
+                    , hspec ^>=2.9.1
+                    , normal-order

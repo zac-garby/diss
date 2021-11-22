@@ -17,8 +17,6 @@ defaultEnv = [ (name, parseTerm1 t) |
                             , ("Y", "λf.(λx.f (x x)) (λx.f (x x))")
                             , ("isZero", "λn.λz.λe.n (λf.e) z")
                             , ("add", "λm.λn.λf.λx.m f (n f x)")
-                            , ("multiply", "λm.λn.λf.m (n f)")
-                            , ("pred", "λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)")
-                            , ("cons", "λa.λb.λf.f a b")
-                            , ("head", "λc.c (λa.λb.a)")
-                            , ("tail", "λc.c (λa.λb.b)") ]]
+                            , ("mul", "λm.λn.λf.m (n f)")
+                            , ("sub", "λm.λn.n (λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)) m")
+                            , ("pred", "λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)") ]]

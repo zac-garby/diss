@@ -1,14 +1,5 @@
 # normal order
 
-This folder contains an implementation of a "pure" lambda calculus but with normal-order reduction. The changes are very, very minimal:
+This folder contains an implementation of an untyped lambda calculus evaluator with normal-order reduction. It's structured as a cabal project.
 
-```diff
-77c77
-< evalApp2 (App t1 t2) = do
----
-> evalApp2 (App v1 t2) | isValue v1 = do
-79c79
-<   return $ App t1 t2'
----
->   return $ App v1 t2'
-```
+The evaluator can be built and run with `cabal run normal-order`, and `cabal test` will run the test suite.

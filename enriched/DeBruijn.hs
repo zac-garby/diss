@@ -13,6 +13,7 @@ type Name = String
 data Term = Var Index
           | Abs Name Term
           | App Term Term
+          | Let Name Term Term
           deriving Eq
 
 type Names = [String]
@@ -74,9 +75,9 @@ evalApp1 (App t1 t2) = do
 evalApp1 _ = Nothing
 
 evalApp2 :: Term -> Maybe Term
-evalApp2 (App t1 t2) = do
+evalApp2 (App v1 t2) | isValue v1 = do
   t2' <- evalStep t2
-  return $ App t1 t2'
+  return $ App v1 t2'
 evalApp2 _ = Nothing
 
 evalAppAbs :: Term -> Maybe Term
