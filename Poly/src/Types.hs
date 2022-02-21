@@ -65,6 +65,8 @@ tyInt = TyConstr "int" []
 tyBool :: Type
 tyBool = TyConstr "bool" []
 
+infixr -->
+
 (-->) :: Type -> Type -> Type
 a --> b = TyConstr "->" [a, b]
 
