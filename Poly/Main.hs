@@ -57,10 +57,16 @@ typecheckProgram defs = forM_ defs $ \(Definition name t) -> do
     Left err -> liftIO $ putStrLn $ name ++ " error: " ++ show err
     Right sch -> do
       liftIO $ putStrLn $ " " ++ name ++ " : " ++ show sch
-      modify ((name, sch) :)
+      modify (insertKV name sch)
 
 browse :: Interactive ()
 browse = do
   env <- get
   forM_ env $ \(name, sch) ->
     liftIO $ putStrLn $ " " ++ name ++ " : " ++ show sch
+
+insertKV :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+insertKV k v [] = [(k, v)]
+insertKV k v ((k', v'):xs)
+  | k == k' = (k, v) : xs
+  | otherwise = (k', v') : insertKV k v xs
