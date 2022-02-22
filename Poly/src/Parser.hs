@@ -9,6 +9,7 @@ import Text.ParserCombinators.ReadP
 import Data.Char
 import Control.Monad
 import Control.Applicative hiding (many)
+import Debug.Trace
 
 type Ident = String
 data Definition = Definition Ident Term
@@ -18,6 +19,7 @@ data Term = Var Ident
           | App Term Term
           | Abs Ident Term
           | Let Ident Term Term
+          | LetRec Ident Term Term
           | If Term Term Term
           | LitInt Int
           | LitBool Bool
@@ -28,6 +30,7 @@ instance Show Term where
   show (App f x) = "(" ++ show f ++ " " ++ show x ++ ")"
   show (Abs v t) = "λ" ++ v ++ "." ++ show t
   show (Let v val body) = "let " ++ v ++ " = " ++ show val ++ " in " ++ show body
+  show (LetRec v val body) = "let rec " ++ v ++ " = " ++ show val ++ " in " ++ show body
   show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (LitInt i) = show i
   show (LitBool b) = show b
@@ -43,20 +46,20 @@ parseTerm s = case readP_to_S (space *> term <* space <* eof) s of
   _ -> Nothing
 
 program :: ReadP Program
-program = sepBy def space
+program = sepBy (def <* space <* char '.') space
 
 def :: ReadP Definition
 def = do
   name <- ident             <* space
   args <- sepBy ident space <* space
   char '='                  <* space
-  body <- term              <* space
-  char '.'
+  body <- term
   return $ Definition name (foldr Abs body args)
 
 term :: ReadP Term
 term = choice [ app
               , abstr
+              , letRecExpr
               , letExpr
               , ifExpr
               , atom ]
@@ -78,15 +81,19 @@ abstr = do
   t <- term
   return $ foldr Abs t xs
 
+letRecExpr :: ReadP Term
+letRecExpr = do
+  string "rec" <* space
+  (Let n v b) <- letExpr
+  return $ LetRec n v b
+
 letExpr :: ReadP Term
 letExpr = do
-  string "let" <* space
-  x <- ident   <* space
-  string "="   <* space
-  val <- term  <* space
-  string "in"  <* space
+  string "let"          <* space
+  Definition n v <- def <* space
+  string "in"           <* space
   body <- term
-  return $ Let x val body
+  return $ Let n v body
 
 ifExpr :: ReadP Term
 ifExpr = do

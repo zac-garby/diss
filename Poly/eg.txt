@@ -1,5 +1,16 @@
 id x = x.
+as a b = if True then b else a.
 
 swap f x y = f y x.
 
 const x y = x.
+
+not b = if b then False else True.
+
+add a b = as a (as b 0).
+mult a b = as a (as b 0).
+pred a = as a 0.
+
+fix f = f (fix f).
+
+zero a = const True (as a 0).

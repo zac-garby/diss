@@ -31,7 +31,7 @@ instance Show (GenericType String) where
   show (TyConstr "->" [l,r]) = bracketType l ++ " → " ++ show r
   show (TyConstr c []) = c
   show (TyConstr c ts) = c ++ " " ++ intercalate " " (map bracketType ts)
-
+  
 bracketType :: Type -> String
 bracketType (TyConstr c []) = c
 bracketType t@(TyConstr _ _) = "(" ++ show t ++ ")"
