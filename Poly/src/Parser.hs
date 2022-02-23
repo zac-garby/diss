@@ -1,9 +1,9 @@
-module Parser ( Term (..)
+module Parser ( Expr (..)
               , Definition (..)
               , Ident
               , Program
               , parseProgram
-              , parseTerm ) where
+              , parseExpr ) where
 
 import Text.ParserCombinators.ReadP
 import Data.Char
@@ -12,20 +12,20 @@ import Control.Applicative hiding (many)
 import Debug.Trace
 
 type Ident = String
-data Definition = Definition Ident Term
+data Definition = Definition Ident Expr
 type Program = [Definition]
 
-data Term = Var Ident
-          | App Term Term
-          | Abs Ident Term
-          | Let Ident Term Term
-          | LetRec Ident Term Term
-          | If Term Term Term
+data Expr = Var Ident
+          | App Expr Expr
+          | Abs Ident Expr
+          | Let Ident Expr Expr
+          | LetRec Ident Expr Expr
+          | If Expr Expr Expr
           | LitInt Int
           | LitBool Bool
           deriving (Eq, Ord)
 
-instance Show Term where
+instance Show Expr where
   show (Var v) = v
   show (App f x) = "(" ++ show f ++ " " ++ show x ++ ")"
   show (Abs v t) = "λ" ++ v ++ "." ++ show t
@@ -40,8 +40,8 @@ parseProgram s = case readP_to_S (space *> program <* space <* eof) s of
   ((p, _):_) -> Just p
   _ -> Nothing
 
-parseTerm :: String -> Maybe Term
-parseTerm s = case readP_to_S (space *> term <* space <* eof) s of
+parseExpr :: String -> Maybe Expr
+parseExpr s = case readP_to_S (space *> expr <* space <* eof) s of
   ((t, _):_) -> Just t
   _ -> Nothing
 
@@ -53,68 +53,68 @@ def = do
   name <- ident             <* space
   args <- sepBy ident space <* space
   char '='                  <* space
-  body <- term
+  body <- expr
   return $ Definition name (foldr Abs body args)
 
-term :: ReadP Term
-term = choice [ app
+expr :: ReadP Expr
+expr = choice [ app
               , abstr
               , letRecExpr
               , letExpr
               , ifExpr
               , atom ]
 
-atom :: ReadP Term
+atom :: ReadP Expr
 atom = choice [var, bracket, litInt, litBool]
 
-app :: ReadP Term
+app :: ReadP Expr
 app = chainl1 atom (space >> return App)
 
-var :: ReadP Term
+var :: ReadP Expr
 var = Var <$> ident
 
-abstr :: ReadP Term
+abstr :: ReadP Expr
 abstr = do
   (char '\\' <|> char 'λ') <* space
   xs <- sepBy1 ident space <* space
   string "->"              <* space
-  t <- term
+  t <- expr
   return $ foldr Abs t xs
 
-letRecExpr :: ReadP Term
+letRecExpr :: ReadP Expr
 letRecExpr = do
   string "rec" <* space
   (Let n v b) <- letExpr
   return $ LetRec n v b
 
-letExpr :: ReadP Term
+letExpr :: ReadP Expr
 letExpr = do
   string "let"          <* space
   Definition n v <- def <* space
   string "in"           <* space
-  body <- term
+  body <- expr
   return $ Let n v body
 
-ifExpr :: ReadP Term
+ifExpr :: ReadP Expr
 ifExpr = do
   string "if"      <* space
-  cond <- term     <* space
+  cond <- expr     <* space
   string "then"    <* space
-  positive <- term <* space
+  positive <- expr <* space
   string "else"    <* space
-  negative <- term
+  negative <- expr
   return $ If cond positive negative
 
-litInt :: ReadP Term
+litInt :: ReadP Expr
 litInt = LitInt <$> int
 
-litBool :: ReadP Term
+litBool :: ReadP Expr
 litBool = LitBool . read <$> (string "True" <|> string "False")
 
-bracket :: ReadP Term
+bracket :: ReadP Expr
 bracket = do
   char '('  <* space
-  t <- term <* space
+  t <- expr <* space
   char ')'
   return t
 

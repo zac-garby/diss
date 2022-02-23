@@ -22,46 +22,48 @@ main :: IO ()
 main = void $ evalStateT (runExceptT repl) []
 
 repl :: Interactive ()
-repl = do
+repl = forever $ do
   liftIO $ putStr "☛ "
   liftIO $ hFlush stdout
   l <- liftIO $ getLine
 
-  case l of
-    "" -> repl
-    ':':'l':rest -> loadFiles (words rest)
-    ':':'b':rest -> browse
-    ':':'h':rest -> help
-    s -> handleExpr s
+  oldEnv <- get
+  handleCommand l `catchError` restore oldEnv
 
   liftIO $ putStrLn ""
-  repl
+
+handleCommand :: String -> Interactive ()
+handleCommand "" = repl
+handleCommand (':':'l':rest) = loadFiles (words rest)
+handleCommand (':':'b':rest) = browse
+handleCommand (':':'h':rest) = help
+handleCommand s = handleExpr s
+
+restore :: Env -> Error -> Interactive ()
+restore oldEnv err = do
+  liftIO $ putStrLn "error:"
+  liftIO $ putStrLn $ "  " ++ show err
+  put oldEnv
 
 handleExpr :: String -> Interactive ()
-handleExpr s = case parseTerm s of
+handleExpr s = case parseExpr s of
   Just t -> typecheckTerm t
-  Nothing -> liftIO $ putStrLn "parse error"
+  Nothing -> throwError $ SyntaxErr "<repl>"
 
-typecheckTerm :: Term -> Interactive ()
+typecheckTerm :: Expr -> Interactive ()
 typecheckTerm t = do
   env <- get
-  liftIO $ case typecheck env t of
-    Left err -> putStrLn $ show err
-    Right (Forall [] ty) -> putStrLn $ " : " ++ show ty
-    Right (Forall vars ty) -> do
+  case typecheck env t of
+    Left err -> throwError $ TypeErr err
+    Right (Forall [] ty) -> liftIO $ putStrLn $ " : " ++ show ty
+    Right (Forall vars ty) -> liftIO $ do
       putStrLn $ " : ∀ " ++ intercalate " " vars
       putStrLn $ "      " ++ show ty
 
 loadFiles :: [String] -> Interactive ()
 loadFiles fs = do
-  forM_ fs $ \file -> do
-    oldEnv <- get
-    loadFile file `catchError` \err -> do
-      liftIO $ putStrLn $ "error loading " ++ file ++ ":"
-      liftIO $ putStrLn $ "  " ++ show err
-      put oldEnv
-
-  browse
+  forM_ fs loadFile
+  liftIO $ putStrLn $ "loaded " ++ show (length fs) ++ " file(s)"
 
 loadFile :: String -> Interactive ()
 loadFile file = do

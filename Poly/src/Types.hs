@@ -31,7 +31,7 @@ instance Show (GenericType String) where
   show (TyConstr "->" [l,r]) = bracketType l ++ " → " ++ show r
   show (TyConstr c []) = c
   show (TyConstr c ts) = c ++ " " ++ intercalate " " (map bracketType ts)
-
+  
 bracketType :: Type -> String
 bracketType (TyConstr c []) = c
 bracketType t@(TyConstr _ _) = "(" ++ show t ++ ")"
@@ -107,7 +107,7 @@ type Infer = RWST
   [Ident]            -- fresh variable names
   (Except TypeError) -- errors
 
-infer :: Term -> Infer Type
+infer :: Expr -> Infer Type
 
 infer (Var x) = do
   env <- ask
@@ -222,7 +222,7 @@ v `extend` t | t == TyVar v = return ()
 compose :: Subst -> Subst -> Subst
 compose s1 s2 = map (fmap (sub s1)) s2 ++ s1
 
-typecheck :: Env -> Term -> Either TypeError Scheme
+typecheck :: Env -> Expr -> Either TypeError Scheme
 typecheck e t = runExcept $ do
   (t, cs) <- runInfer e (infer t)
   s <- runUnify (solve cs)
