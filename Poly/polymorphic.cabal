@@ -21,6 +21,7 @@ extra-source-files: CHANGELOG.md
 library
     exposed-modules: Parser
                    , Types
+                   , Compiler
 
     build-depends:    base ^>=4.14.3.0
                     , mtl

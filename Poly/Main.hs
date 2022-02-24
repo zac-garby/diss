@@ -8,9 +8,11 @@ import Control.Monad.State.Strict
 
 import Parser
 import Types
+import Compiler
 
 data Error = TypeErr TypeError
            | SyntaxErr FilePath
+           | CompileErr CompilerError
 
 type Interactive = ExceptT Error (StateT Env IO)
 
@@ -47,7 +49,11 @@ restore oldEnv err = do
 
 handleInput :: String -> Interactive ()
 handleInput s = case parseExpr s of
-  Just t -> typecheckTerm t
+  Just t -> do
+    typecheckTerm t
+    case compile t of
+      Left e -> throwError $ CompileErr e
+      Right term -> liftIO $ print term
   Nothing -> throwError $ SyntaxErr "<repl>"
 
 typecheckTerm :: Expr -> Interactive ()

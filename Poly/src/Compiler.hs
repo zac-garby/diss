@@ -1,4 +1,4 @@
-module Eval where
+module Compiler where
 
 import Control.Monad.Reader
 import Control.Monad.Except
@@ -13,7 +13,21 @@ data Term = CVar Index
           | CFix Term
           | CLitInt Int
           | CLitBool Bool
-          deriving (Eq, Show)
+          deriving (Eq)
+
+instance Show Term where
+  show (CVar i) = show i
+  show (CAbs t) = "λ." ++ show t
+  show (CApp f x) = concat [ bracket True (show f)
+                          , " "
+                          , bracket True (show x) ]
+  show (CFix t) = "fix " ++ show t
+  show (CLitInt i) = "#" ++ show i
+  show (CLitBool b) = show b
+
+bracket :: Bool -> String -> String
+bracket True s = "(" ++ s ++ ")"
+bracket False s = s
 
 data CompilerError = UndefinedVariable Ident
   deriving (Eq, Show)
@@ -44,6 +58,16 @@ fromExpr (Abs v t) = do
   return $ CAbs t'
 
 fromExpr (Let v val body) = fromExpr $ App (Abs v body) val
+
+-- rec let v = val in body
+--  =
+-- let v = fix (\v' -> val[v=v']) in body
+--  =
+-- (\v.body) (fix (\v' -> val[v=v']))
+fromExpr (LetRec v val body) = do
+  body' <- with v $ fromExpr body
+  val' <- with v $ fromExpr val
+  return $ CApp (CAbs body') (CFix $ CAbs val')
 
 fromExpr (LitInt n) = return $ CLitInt n
 fromExpr (LitBool b) = return $ CLitBool b
