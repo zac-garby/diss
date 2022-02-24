@@ -11,6 +11,10 @@ add a b = as a (as b 0).
 mult a b = as a (as b 0).
 pred a = as a 0.
 
-fix f = f (fix f).
-
 zero a = const True (as a 0).
+
+fac n = if zero n
+	    then 1
+		else mult n (fac (pred n)).
+
+fix f = f (fix f).

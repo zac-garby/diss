@@ -30,19 +30,17 @@ instance Show Expr where
   show (App f x) = "(" ++ show f ++ " " ++ show x ++ ")"
   show (Abs v t) = "λ" ++ v ++ "." ++ show t
   show (Let v val body) = "let " ++ v ++ " = " ++ show val ++ " in " ++ show body
-  show (LetRec v val body) = "let rec " ++ v ++ " = " ++ show val ++ " in " ++ show body
+  show (LetRec v val body) = "rec let " ++ v ++ " = " ++ show val ++ " in " ++ show body
   show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (LitInt i) = show i
   show (LitBool b) = show b
 
-parseProgram :: String -> Maybe Program
-parseProgram s = case readP_to_S (space *> program <* space <* eof) s of
-  ((p, _):_) -> Just p
-  _ -> Nothing
+parseProgram = parseWrapper program
+parseExpr = parseWrapper expr
 
-parseExpr :: String -> Maybe Expr
-parseExpr s = case readP_to_S (space *> expr <* space <* eof) s of
-  ((t, _):_) -> Just t
+parseWrapper :: ReadP a -> String -> Maybe a
+parseWrapper p s = case readP_to_S (space *> p <* space <* eof) s of
+  ((a, _):_) -> Just a
   _ -> Nothing
 
 program :: ReadP Program

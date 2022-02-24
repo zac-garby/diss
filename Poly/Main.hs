@@ -37,7 +37,7 @@ handleCommand "" = repl
 handleCommand (':':'l':rest) = loadFiles (words rest)
 handleCommand (':':'b':rest) = browse
 handleCommand (':':'h':rest) = help
-handleCommand s = handleExpr s
+handleCommand s = handleInput s
 
 restore :: Env -> Error -> Interactive ()
 restore oldEnv err = do
@@ -45,8 +45,8 @@ restore oldEnv err = do
   liftIO $ putStrLn $ "  " ++ show err
   put oldEnv
 
-handleExpr :: String -> Interactive ()
-handleExpr s = case parseExpr s of
+handleInput :: String -> Interactive ()
+handleInput s = case parseExpr s of
   Just t -> typecheckTerm t
   Nothing -> throwError $ SyntaxErr "<repl>"
 

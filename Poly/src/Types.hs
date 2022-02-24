@@ -135,6 +135,7 @@ infer (Let x e b) = do
 infer (LetRec x e b) = do
   tv <- fresh
   te <- with (x, Forall [] tv) (infer e)
+  
   te ~~ tv
 
   with (x, Forall [] tv) (infer b)
