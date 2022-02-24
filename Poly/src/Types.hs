@@ -82,12 +82,6 @@ sub :: Subst -> Type -> Type
 sub s t@(TyVar v) = fromMaybe t (lookup v s)
 sub s (TyConstr c ts) = TyConstr c (map (sub s) ts)
 
-sub' :: Subst -> Type -> Type
-sub' s t
-  | t == t' = t
-  | otherwise = sub' s t'
-  where t' = sub s t
-
 type Constraint = (Type, Type)
 
 data TypeError = UnifyInfiniteError Ident Type
@@ -131,10 +125,12 @@ infer (App f x) = do
   return tv
 
 infer (Let x e b) = do
-  te <- infer e
-  sch <- generalise te
-  
-  with (x, sch) (infer b)
+  (te, cs) <- listen $ infer e
+  case runExcept (runUnify (solve cs)) of
+    Left e -> throwError e
+    Right s -> do
+      sch <- generalise (sub s te) -- fixed bug: let two = (\n -> add n 1) 1 in two
+      with (x, sch) (infer b)
 
 infer (LetRec x e b) = do
   tv <- fresh
