@@ -9,6 +9,7 @@ import Control.Monad.State.Strict
 import Parser
 import Types
 import Compiler
+import Eval
 
 data Error = TypeErr TypeError
            | SyntaxErr FilePath
@@ -55,7 +56,7 @@ handleInput s = case parseExpr s of
     env <- get
     case compile env t of
       Left e -> throwError $ CompileErr e
-      Right term -> liftIO $ print term
+      Right term -> liftIO $ print (eval term)
   Nothing -> throwError $ SyntaxErr "<repl>"
 
 typecheckTerm :: Expr -> Interactive ()

@@ -1,4 +1,7 @@
-module Compiler where
+module Compiler ( Term (..)
+                , CompilerError (..)
+                , Index
+                , compile ) where
 
 import Control.Monad.Reader
 import Control.Monad.Except
