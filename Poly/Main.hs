@@ -48,12 +48,13 @@ handleCommand s = handleInput s
 handleInput :: String -> Interactive ()
 handleInput s = do
   t <- parseExpr "<repl>" s ?? SyntaxErr
-  typecheckTerm t
-  
+  (Forall _ ty) <- typecheckTerm t
   env <- get
   term <- compile (fromEnvironment env) t ?? CompileErr
   
-  liftIO $ printTerm $ eval (subEnv (envTerms env) term)
+  liftIO $ do
+    printTerm $ eval (subEnv (envTerms env) term)
+    putStrLn $ "  : " ++ show ty
 
 loadFiles :: [String] -> Interactive ()
 loadFiles fs = do
@@ -73,12 +74,10 @@ help = liftIO $ do
   putStrLn "   :b  browse loaded globals"
   putStrLn "   :h  show this help message"
 
-typecheckTerm :: Expr -> Interactive ()
+typecheckTerm :: Expr -> Interactive Scheme
 typecheckTerm t = do
   env <- gets fromEnvironment
-  sch <- typecheck env t ?? TypeErr
-  liftIO $ case sch of
-    Forall _ ty -> putStrLn $ "  : " ++ show ty
+  typecheck env t ?? TypeErr
 
 loadFile :: String -> Interactive ()
 loadFile file = do
