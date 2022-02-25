@@ -4,6 +4,7 @@ import Control.Monad.Reader
 import Control.Monad.Except
 
 import Parser
+import Types
 
 type Index = Int
 
@@ -11,6 +12,7 @@ data Term = CVar Index
           | CAbs Term
           | CApp Term Term
           | CFix Term
+          | CIf Term Term Term
           | CLitInt Int
           | CLitBool Bool
           deriving (Eq)
@@ -18,24 +20,25 @@ data Term = CVar Index
 instance Show Term where
   show (CVar i) = show i
   show (CAbs t) = "λ." ++ show t
-  show (CApp f x) = concat [ bracket True (show f)
-                          , " "
-                          , bracket True (show x) ]
+  show (CApp f x) =  bracket (show f) ++ bracket (show x)
   show (CFix t) = "fix " ++ show t
+  show (CIf cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (CLitInt i) = "#" ++ show i
   show (CLitBool b) = show b
 
-bracket :: Bool -> String -> String
-bracket True s = "(" ++ s ++ ")"
-bracket False s = s
+bracket :: String -> String
+bracket s = "(" ++ s ++ ")"
 
 data CompilerError = UndefinedVariable Ident
-  deriving (Eq, Show)
+
+instance Show CompilerError where
+  show (UndefinedVariable v) = "undeclared variable: " ++ v
 
 type Compiler = ReaderT [Ident] (Except CompilerError)
 
-compile :: Expr -> Either CompilerError Term
-compile = runCompiler . fromExpr
+compile :: Env -> Expr -> Either CompilerError Term
+compile env e = runExcept (runReaderT (fromExpr e) names)
+  where names = map fst env
 
 runCompiler :: Compiler a -> Either CompilerError a
 runCompiler c = runExcept (runReaderT c [])
@@ -59,15 +62,16 @@ fromExpr (Abs v t) = do
 
 fromExpr (Let v val body) = fromExpr $ App (Abs v body) val
 
--- rec let v = val in body
---  =
--- let v = fix (\v' -> val[v=v']) in body
---  =
--- (\v.body) (fix (\v' -> val[v=v']))
 fromExpr (LetRec v val body) = do
   body' <- with v $ fromExpr body
   val' <- with v $ fromExpr val
   return $ CApp (CAbs body') (CFix $ CAbs val')
+
+fromExpr (If cond t f) = do
+  cond' <- fromExpr cond
+  t' <- fromExpr t
+  f' <- fromExpr f
+  return $ CIf cond' t' f'
 
 fromExpr (LitInt n) = return $ CLitInt n
 fromExpr (LitBool b) = return $ CLitBool b

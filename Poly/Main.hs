@@ -19,6 +19,7 @@ type Interactive = ExceptT Error (StateT Env IO)
 instance Show Error where
   show (TypeErr te) = show te
   show (SyntaxErr fp) = "syntax error in " ++ fp
+  show (CompileErr ce) = show ce
 
 main :: IO ()
 main = void $ evalStateT (runExceptT repl) []
@@ -51,7 +52,8 @@ handleInput :: String -> Interactive ()
 handleInput s = case parseExpr s of
   Just t -> do
     typecheckTerm t
-    case compile t of
+    env <- get
+    case compile env t of
       Left e -> throwError $ CompileErr e
       Right term -> liftIO $ print term
   Nothing -> throwError $ SyntaxErr "<repl>"
