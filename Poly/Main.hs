@@ -10,10 +10,9 @@ import Parser
 import Types
 import Compiler
 import Eval
+import Env
 
 type Interactive = ExceptT Error (StateT Environment IO)
-
-type Environment = [(String, (Scheme, Term))]
 
 data Error = TypeErr TypeError
            | SyntaxErr FilePath
@@ -25,7 +24,7 @@ instance Show Error where
   show (CompileErr ce) = show ce
 
 main :: IO ()
-main = void $ evalStateT (runExceptT repl) []
+main = void $ evalStateT (runExceptT repl) defaultEnv
 
 repl :: Interactive ()
 repl = forever $ do

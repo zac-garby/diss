@@ -5,7 +5,10 @@ module Types ( GenericType (..)
              , TypeError (..)
              , Type
              , Env
-             , typecheck ) where
+             , typecheck
+             , tyInt
+             , tyBool
+             , (-->) ) where
 
 import qualified Control.Monad.State.Lazy as S
 

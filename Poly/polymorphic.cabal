@@ -23,6 +23,7 @@ library
                    , Types
                    , Compiler
                    , Eval
+                   , Env
 
     build-depends:    base ^>=4.14.3.0
                     , mtl
