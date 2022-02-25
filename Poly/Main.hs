@@ -96,7 +96,7 @@ browse = do
 help :: Interactive ()
 help = liftIO $ do
   putStrLn " Usage"
-  putStrLn "   :l  load files"
+  putStrLn "   :l  load file(s)"
   putStrLn "   :b  browse loaded globals"
   putStrLn "   :h  show this help message"
 
