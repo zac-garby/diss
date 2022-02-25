@@ -1,4 +1,5 @@
 id x = x.
+id-2 = id.
 as a b = if True then b else a.
 
 swap f x y = f y x.

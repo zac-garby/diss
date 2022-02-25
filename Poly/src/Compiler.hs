@@ -5,6 +5,7 @@ module Compiler ( Term (..)
 
 import Control.Monad.Reader
 import Control.Monad.Except
+import Debug.Trace
 
 import Parser
 import Types

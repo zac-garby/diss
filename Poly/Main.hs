@@ -11,11 +11,13 @@ import Types
 import Compiler
 import Eval
 
+type Interactive = ExceptT Error (StateT Environment IO)
+
+type Environment = [(String, (Scheme, Term))]
+
 data Error = TypeErr TypeError
            | SyntaxErr FilePath
            | CompileErr CompilerError
-
-type Interactive = ExceptT Error (StateT Env IO)
 
 instance Show Error where
   show (TypeErr te) = show te
@@ -43,7 +45,7 @@ handleCommand (':':'b':rest) = browse
 handleCommand (':':'h':rest) = help
 handleCommand s = handleInput s
 
-restore :: Env -> Error -> Interactive ()
+restore :: Environment -> Error -> Interactive ()
 restore oldEnv err = do
   liftIO $ putStrLn "error:"
   liftIO $ putStrLn $ "  " ++ show err
@@ -54,14 +56,14 @@ handleInput s = case parseExpr s of
   Just t -> do
     typecheckTerm t
     env <- get
-    case compile env t of
+    case compile (fromEnvironment env) t of
       Left e -> throwError $ CompileErr e
-      Right term -> liftIO $ print (eval term)
+      Right term -> liftIO $ print (eval (subEnv (envTerms env) term))
   Nothing -> throwError $ SyntaxErr "<repl>"
 
 typecheckTerm :: Expr -> Interactive ()
 typecheckTerm t = do
-  env <- get
+  env <- gets fromEnvironment
   case typecheck env t of
     Left err -> throwError $ TypeErr err
     Right (Forall [] ty) -> liftIO $ putStrLn $ " : " ++ show ty
@@ -82,18 +84,22 @@ loadFile file = do
     Just p -> typecheckProgram p
     Nothing -> throwError $ SyntaxErr file
 
+-- TODO: clean up exception handling with withExcept
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram defs = forM_ defs $ \(Definition name t) -> do
-  env <- get
-  case typecheck env (LetRec name t (Var name)) of
+  env <- gets fromEnvironment
+  let t' = LetRec name t (Var name)
+  case typecheck env t' of
     Left err -> throwError $ TypeErr err
-    Right sch -> modify (insertKV name sch)
+    Right sch -> case compile env t' of
+      Left err -> throwError $ CompileErr err
+      Right term -> modify (insertKV name (sch, term))
 
 browse :: Interactive ()
 browse = do
   env <- get
-  forM_ env $ \(name, sch) ->
-    liftIO $ putStrLn $ " " ++ name ++ " : " ++ show sch
+  forM_ env $ \(name, (sch, t)) ->
+    liftIO $ putStrLn $ " " ++ name ++ " : " ++ show sch ++ "\n   " ++ show t
 
 help :: Interactive ()
 help = liftIO $ do
@@ -107,3 +113,9 @@ insertKV k v [] = [(k, v)]
 insertKV k v ((k', v'):xs)
   | k == k' = (k, v) : xs
   | otherwise = (k', v') : insertKV k v xs
+
+fromEnvironment :: Environment -> Env
+fromEnvironment emt = [ (n, sch) | (n, (sch, _)) <- emt ]
+
+envTerms :: Environment -> [Term]
+envTerms emt = [ t | (_, (_, t)) <- emt ]

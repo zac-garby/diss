@@ -1,6 +1,9 @@
-module Eval where
+module Eval ( eval
+            , subEnv ) where
 
 import Data.Foldable
+import Control.Applicative
+import Debug.Trace
 
 import Compiler
 
@@ -8,6 +11,9 @@ eval :: Term -> Term
 eval t = case evalStep t of
   Just t' -> eval t'
   Nothing -> t
+
+subEnv :: [Term] -> Term -> Term
+subEnv vs = foldr (.) id ((-->) <$> ZipList [0..] <*> ZipList vs)
 
 evalStep :: Term -> Maybe Term
 evalStep t = asum $ map ($t) [ evalAppAbs
