@@ -6,6 +6,7 @@ module Types ( GenericType (..)
              , Type
              , Env
              , typecheck
+             , finalise
              , tyInt
              , tyBool
              , (-->) ) where

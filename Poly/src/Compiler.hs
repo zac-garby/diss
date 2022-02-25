@@ -19,7 +19,7 @@ data Term = CVar Index
           | CIf Term Term Term
           | CLitInt Int
           | CLitBool Bool
-          deriving (Eq)
+          | CBuiltin (Term -> Term)
 
 instance Show Term where
   show (CVar i) = show i
@@ -29,6 +29,7 @@ instance Show Term where
   show (CIf cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (CLitInt i) = "#" ++ show i
   show (CLitBool b) = show b
+  show (CBuiltin f) = "<builtin>"
 
 bracket :: String -> String
 bracket s = "(" ++ s ++ ")"

@@ -2,6 +2,7 @@ module Eval ( eval
             , subEnv ) where
 
 import Data.Foldable
+import Data.Maybe
 import Control.Applicative
 import Debug.Trace
 
@@ -36,6 +37,7 @@ evalApp2 _ = Nothing
 
 evalAppAbs :: Term -> Maybe Term
 evalAppAbs (CApp (CAbs t12) v2) = return $ shift (-1) ((0 --> shift 1 v2) t12)
+evalAppAbs (CApp (CBuiltin f) v) | isValue v = return $ f v
 evalAppAbs _ = Nothing
 
 evalFix :: Term -> Maybe Term
@@ -50,6 +52,9 @@ evalIf (CIf cond t f) = do
   return $ CIf cond' t f
 evalIf _ = Nothing
 
+isValue :: Term -> Bool
+isValue = isNothing . evalStep
+
 shift :: Int -> Term -> Term
 shift d = shift' d 0
 
@@ -62,6 +67,7 @@ shift' d c (CFix t) = CFix (shift' d c t)
 shift' d c (CIf cond t f) = CIf (shift' d c cond) (shift' d c t) (shift' d c f)
 shift' d c (CLitInt i) = CLitInt i
 shift' d c (CLitBool b) = CLitBool b
+shift' d c (CBuiltin f) = CBuiltin f
 
 (-->) :: Int -> Term -> Term -> Term
 (j --> s) (CVar n) | j == n = s
@@ -72,3 +78,4 @@ shift' d c (CLitBool b) = CLitBool b
 (j --> s) (CIf cond t f) = CIf ((j --> s) cond) ((j --> s) t) ((j --> s) f)
 (j --> s) (CLitInt i) = CLitInt i
 (j --> s) (CLitBool b) = CLitBool b
+(j --> s) (CBuiltin f) = CBuiltin f
