@@ -49,20 +49,22 @@ handleInput :: String -> Interactive ()
 handleInput s = do
   t <- parseExpr "<repl>" s ?? SyntaxErr
   typecheckTerm t
+  
   env <- get
   term <- compile (fromEnvironment env) t ?? CompileErr
-  liftIO $ print (eval (subEnv (envTerms env) term))
+  
+  liftIO $ printTerm $ eval (subEnv (envTerms env) term)
 
 loadFiles :: [String] -> Interactive ()
 loadFiles fs = do
   forM_ fs loadFile
-  liftIO $ putStrLn $ "loaded " ++ show (length fs) ++ " file(s)"
+  liftIO $ putStrLn $ "  loaded " ++ show (length fs) ++ " file(s)"
 
 browse :: Interactive ()
 browse = do
   env <- get
   forM_ env $ \(name, (sch, t)) ->
-    liftIO $ putStrLn $ " " ++ name ++ " : " ++ show sch
+    liftIO $ putStrLn $ "  " ++ name ++ " : " ++ show sch
 
 help :: Interactive ()
 help = liftIO $ do
@@ -75,12 +77,8 @@ typecheckTerm :: Expr -> Interactive ()
 typecheckTerm t = do
   env <- gets fromEnvironment
   sch <- typecheck env t ?? TypeErr
-  case sch of
-    Forall [] ty -> liftIO $ putStrLn $ " : " ++ show ty
-    Forall [v] ty -> liftIO $ putStrLn $ " : ∀ " ++ v ++ " . " ++ show ty
-    Forall vars ty -> liftIO $ do
-      putStrLn $ " : ∀ " ++ intercalate " " vars ++ " ."
-      putStrLn $ "      " ++ show ty
+  liftIO $ case sch of
+    Forall _ ty -> putStrLn $ "  : " ++ show ty
 
 loadFile :: String -> Interactive ()
 loadFile file = do
@@ -98,9 +96,14 @@ typecheckProgram defs = forM_ defs $ \(Definition name t) -> do
 
 restore :: Environment -> Error -> Interactive ()
 restore oldEnv err = do
-  liftIO $ putStrLn "error:"
-  liftIO $ putStrLn $ "  " ++ show err
+  liftIO $ putStrLn "  error:"
+  liftIO $ putStrLn $ "  • " ++ show err
   put oldEnv
+
+printTerm :: Term -> IO ()
+printTerm (CLitInt n) = putStrLn $ "  = " ++ show n
+printTerm (CLitBool b) = putStrLn $ "  = " ++ show b
+printTerm _ = return ()
 
 insertKV :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 insertKV k v [] = [(k, v)]
