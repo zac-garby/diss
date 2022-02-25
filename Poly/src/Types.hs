@@ -219,8 +219,8 @@ v `extend` t | t == TyVar v = return ()
 compose :: Subst -> Subst -> Subst
 compose s1 s2 = map (fmap (sub s1)) s2 ++ s1
 
-typecheck :: Env -> Expr -> Either TypeError Scheme
-typecheck e t = runExcept $ do
+typecheck :: Env -> Expr -> Except TypeError Scheme
+typecheck e t = do
   (t, cs) <- runInfer e (infer t)
   s <- runUnify (solve cs)
   return $ finalise (sub s t)

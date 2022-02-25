@@ -45,61 +45,24 @@ handleCommand (':':'b':rest) = browse
 handleCommand (':':'h':rest) = help
 handleCommand s = handleInput s
 
-restore :: Environment -> Error -> Interactive ()
-restore oldEnv err = do
-  liftIO $ putStrLn "error:"
-  liftIO $ putStrLn $ "  " ++ show err
-  put oldEnv
-
 handleInput :: String -> Interactive ()
-handleInput s = case parseExpr s of
-  Just t -> do
-    typecheckTerm t
-    env <- get
-    case compile (fromEnvironment env) t of
-      Left e -> throwError $ CompileErr e
-      Right term -> liftIO $ print (eval (subEnv (envTerms env) term))
-  Nothing -> throwError $ SyntaxErr "<repl>"
-
-typecheckTerm :: Expr -> Interactive ()
-typecheckTerm t = do
-  env <- gets fromEnvironment
-  case typecheck env t of
-    Left err -> throwError $ TypeErr err
-    Right (Forall [] ty) -> liftIO $ putStrLn $ " : " ++ show ty
-    Right (Forall [v] ty) -> liftIO $ putStrLn $ " : ∀ " ++ v ++ " . " ++ show ty
-    Right (Forall vars ty) -> liftIO $ do
-      putStrLn $ " : ∀ " ++ intercalate " " vars ++ " ."
-      putStrLn $ "      " ++ show ty
+handleInput s = do
+  t <- parseExpr "<repl>" s ?? SyntaxErr
+  typecheckTerm t
+  env <- get
+  term <- compile (fromEnvironment env) t ?? CompileErr
+  liftIO $ print (eval (subEnv (envTerms env) term))
 
 loadFiles :: [String] -> Interactive ()
 loadFiles fs = do
   forM_ fs loadFile
   liftIO $ putStrLn $ "loaded " ++ show (length fs) ++ " file(s)"
 
-loadFile :: String -> Interactive ()
-loadFile file = do
-  s <- liftIO $ readFile file
-  case parseProgram s of
-    Just p -> typecheckProgram p
-    Nothing -> throwError $ SyntaxErr file
-
--- TODO: clean up exception handling with withExcept
-typecheckProgram :: Program -> Interactive ()
-typecheckProgram defs = forM_ defs $ \(Definition name t) -> do
-  env <- gets fromEnvironment
-  let t' = LetRec name t (Var name)
-  case typecheck env t' of
-    Left err -> throwError $ TypeErr err
-    Right sch -> case compile env t' of
-      Left err -> throwError $ CompileErr err
-      Right term -> modify (insertKV name (sch, term))
-
 browse :: Interactive ()
 browse = do
   env <- get
   forM_ env $ \(name, (sch, t)) ->
-    liftIO $ putStrLn $ " " ++ name ++ " : " ++ show sch ++ "\n   " ++ show t
+    liftIO $ putStrLn $ " " ++ name ++ " : " ++ show sch
 
 help :: Interactive ()
 help = liftIO $ do
@@ -107,6 +70,37 @@ help = liftIO $ do
   putStrLn "   :l  load file(s)"
   putStrLn "   :b  browse loaded globals"
   putStrLn "   :h  show this help message"
+
+typecheckTerm :: Expr -> Interactive ()
+typecheckTerm t = do
+  env <- gets fromEnvironment
+  sch <- typecheck env t ?? TypeErr
+  case sch of
+    Forall [] ty -> liftIO $ putStrLn $ " : " ++ show ty
+    Forall [v] ty -> liftIO $ putStrLn $ " : ∀ " ++ v ++ " . " ++ show ty
+    Forall vars ty -> liftIO $ do
+      putStrLn $ " : ∀ " ++ intercalate " " vars ++ " ."
+      putStrLn $ "      " ++ show ty
+
+loadFile :: String -> Interactive ()
+loadFile file = do
+  s <- liftIO $ readFile file
+  p <- parseProgram file s ?? SyntaxErr
+  typecheckProgram p
+
+typecheckProgram :: Program -> Interactive ()
+typecheckProgram defs = forM_ defs $ \(Definition name t) -> do
+  env <- gets fromEnvironment
+  let t' = LetRec name t (Var name)
+  sch <- typecheck env t' ?? TypeErr
+  term <- compile env t' ?? CompileErr
+  modify (insertKV name (sch, term))
+
+restore :: Environment -> Error -> Interactive ()
+restore oldEnv err = do
+  liftIO $ putStrLn "error:"
+  liftIO $ putStrLn $ "  " ++ show err
+  put oldEnv
 
 insertKV :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 insertKV k v [] = [(k, v)]
@@ -119,3 +113,8 @@ fromEnvironment emt = [ (n, sch) | (n, (sch, _)) <- emt ]
 
 envTerms :: Environment -> [Term]
 envTerms emt = [ t | (_, (_, t)) <- emt ]
+
+(??) :: Except a b -> (a -> Error) -> Interactive b
+e ?? f = case runExcept e of
+  Left err -> throwError (f err)
+  Right val -> return val

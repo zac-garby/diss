@@ -8,6 +8,7 @@ module Parser ( Expr (..)
 import Text.ParserCombinators.ReadP
 import Data.Char
 import Control.Monad
+import Control.Monad.Except
 import Control.Applicative hiding (many)
 import Debug.Trace
 
@@ -38,10 +39,10 @@ instance Show Expr where
 parseProgram = parseWrapper program
 parseExpr = parseWrapper expr
 
-parseWrapper :: ReadP a -> String -> Maybe a
-parseWrapper p s = case readP_to_S (space *> p <* space <* eof) s of
-  ((a, _):_) -> Just a
-  _ -> Nothing
+parseWrapper :: ReadP a -> FilePath -> String -> Except FilePath a
+parseWrapper p f s = case readP_to_S (space *> p <* space <* eof) s of
+  ((a, _):_) -> return a
+  _ -> throwError f
 
 program :: ReadP Program
 program = sepBy (def <* space <* char '.') space

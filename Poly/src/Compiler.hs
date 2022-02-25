@@ -40,8 +40,8 @@ instance Show CompilerError where
 
 type Compiler = ReaderT [Ident] (Except CompilerError)
 
-compile :: Env -> Expr -> Either CompilerError Term
-compile env e = runExcept (runReaderT (fromExpr e) names)
+compile :: Env -> Expr -> Except CompilerError Term
+compile env e = runReaderT (fromExpr e) names
   where names = map fst env
 
 runCompiler :: Compiler a -> Either CompilerError a
