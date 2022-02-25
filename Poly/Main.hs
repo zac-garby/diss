@@ -65,8 +65,9 @@ typecheckTerm t = do
   case typecheck env t of
     Left err -> throwError $ TypeErr err
     Right (Forall [] ty) -> liftIO $ putStrLn $ " : " ++ show ty
+    Right (Forall [v] ty) -> liftIO $ putStrLn $ " : ∀ " ++ v ++ " . " ++ show ty
     Right (Forall vars ty) -> liftIO $ do
-      putStrLn $ " : ∀ " ++ intercalate " " vars
+      putStrLn $ " : ∀ " ++ intercalate " " vars ++ " ."
       putStrLn $ "      " ++ show ty
 
 loadFiles :: [String] -> Interactive ()
