@@ -156,6 +156,7 @@ infer (If cond t f) = do
 
 infer (LitInt _) = return tyInt
 infer (LitBool _) = return tyBool
+infer (Hole n) = fresh
 
 runInfer :: Env -> Infer a -> Except TypeError (a, [Constraint])
 runInfer env i = evalRWST i env allVars
@@ -244,4 +245,3 @@ rename t = S.evalState (rename' t) (allVars, [])
             Nothing -> do S.put (rest, (v, new) : existing)
                           return $ TyVar new
         rename' (TyConstr c ts) = TyConstr c <$> traverse rename' ts
-
