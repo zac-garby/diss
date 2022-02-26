@@ -153,6 +153,7 @@ instance Show Expr where
   show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (LitInt i) = show i
   show (LitBool b) = show b
+  show Hole = "?"
 
 unfoldAbs :: Expr -> ([Ident], Expr)
 unfoldAbs (Abs v t) = (v:vs, t')
@@ -163,4 +164,5 @@ brack :: Expr -> String
 brack (Var v) = v
 brack (LitInt i) = show i
 brack (LitBool b) = show b
+brack Hole = show Hole
 brack e = "(" ++ show e ++ ")"
