@@ -47,7 +47,6 @@ handleCommand s = handleInput s
 handleInput :: String -> Interactive ()
 handleInput s = do
   t <- parseExpr "<repl>" s ?? SyntaxErr
-  liftIO $ print t
   (Forall _ ty) <- typecheckTerm t
   env <- get
   term <- compile (fromEnvironment env) t ?? CompileErr
