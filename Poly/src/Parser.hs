@@ -25,6 +25,7 @@ data Expr = Var Ident
           | If Expr Expr Expr
           | LitInt Int
           | LitBool Bool
+          | Hole
           deriving (Eq, Ord)
 
 parseProgram = parseWrapper program
@@ -54,13 +55,16 @@ expr = choice [ app
               , ifExpr ]
 
 atom :: ReadP Expr
-atom = choice [var, bracket, litInt, litBool]
+atom = choice [var, hole, bracket, litInt, litBool]
 
 app :: ReadP Expr
 app = chainl1 atom (space >> return App)
 
 var :: ReadP Expr
 var = Var <$> ident
+
+hole :: ReadP Expr
+hole = string "?" >> return Hole
 
 abstr :: ReadP Expr
 abstr = do
