@@ -1,0 +1,7 @@
+* First try
+The naive implementation of just instantiating a fresh name for each hole doesn't work.
+   - Because, look at the term /let f = ? in f 1/. The hole should have a type of /int -> c/ for all /c/.
+   - The inference rule for /let/ will generalise the type it's inferred for /f/, namely /a/ (a fresh variable for the hole)
+   - The generalisation of /a/ is /∀ a . a/.
+   - Then, when the type of /f/ is inferred in the application /f 1/, it's instantiated, giving a new fresh variable, /b/
+   - This application gives the constraint  /b ~ int \rightarrow  c/.
