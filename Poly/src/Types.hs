@@ -130,11 +130,9 @@ infer (App f x) = do
 
 infer (Let x e b) = do
   (te, cs) <- listen $ infer e
-  case runExcept (runUnify (solve cs)) of
-    Left e -> throwError e
-    Right s -> do
-      sch <- generalise (sub s te) -- fixed bug: let two = (\n -> add n 1) 1 in two
-      with (x, sch) (infer b)
+  s <- lift $ runUnify (solve cs)
+  sch <- generalise (sub s te) -- fixed bug: let two = (\n -> add n 1) 1 in two
+  with (x, sch) (infer b)
 
 infer (LetRec x e b) = do
   tv <- fresh
@@ -235,13 +233,15 @@ finalise t = let t' = rename t
              in Forall (nub $ freeVars t') t'
 
 rename :: Type -> Type
-rename t = S.evalState (rename' t) (allVars, [])
-  where rename' :: Type -> S.State ([Ident], [(Ident, Ident)]) Type
-        rename' (TyVar v) = do
+rename t = sub (makeRenamer t) t
+
+makeRenamer :: Type -> Subst
+makeRenamer t = snd $ S.execState (mk t) (allVars, [])
+  where mk :: Type -> S.State ([Ident], Subst) ()
+        mk (TyVar v) = do
           state <- S.get
           let ((new:rest), existing) = state
           case lookup v existing of
-            Just n -> return $ TyVar n
-            Nothing -> do S.put (rest, (v, new) : existing)
-                          return $ TyVar new
-        rename' (TyConstr c ts) = TyConstr c <$> traverse rename' ts
+            Just n -> return ()
+            Nothing -> S.put (rest, (v, TyVar new) : existing)
+        mk (TyConstr c ts) = void $ traverse mk ts
