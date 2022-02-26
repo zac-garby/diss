@@ -1,0 +1,23 @@
+* Grammar
+
+x\star = x, repeated zero or more times
+x+ = x, repeated /one/ or more times
+*bold* symbols are non-terminals
+_underlined_ symbols are character classes, e.g. _digit_
+
+  
+*program* ::= ( *def* "." )\star
+*def* ::= *ident* ( *ident* )\star "=" *expr*
+
+*expr* ::= *app* | *abstr* | *letrec* | *let* | *if*
+*atom* ::= *ident* | *int* | *bool* | "(" *expr* ")"
+
+*app* ::= *( *atom* )+
+*abstr* ::= ( "\" | "λ" ) ( *ident* )+ ( "->" | "→" )  *expr*
+*letrec* ::= "rec" *let*
+*let* ::= "let" *def* "in" *expr*
+*if* ::= "if" *expr* "then" *expr* "else" *expr*
+
+*int* ::= _digit_ +
+*bool* ::= "True" | "False"
+*ident* ::= _letter_ ( _alphanumeric_ | "_" | "-" | "'" )\star

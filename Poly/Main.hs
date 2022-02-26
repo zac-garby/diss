@@ -28,7 +28,7 @@ main = void $ evalStateT (runExceptT repl) defaultEnv
 
 repl :: Interactive ()
 repl = forever $ do
-  liftIO $ putStr "☛ "
+  liftIO $ putStr "► "
   liftIO $ hFlush stdout
   l <- liftIO $ getLine
 

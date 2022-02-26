@@ -7,6 +7,7 @@ module Parser ( Expr (..)
 
 import Text.ParserCombinators.ReadP
 import Data.Char
+import Data.List
 import Control.Monad
 import Control.Monad.Except
 import Control.Applicative hiding (many)
@@ -25,16 +26,6 @@ data Expr = Var Ident
           | LitInt Int
           | LitBool Bool
           deriving (Eq, Ord)
-
-instance Show Expr where
-  show (Var v) = v
-  show (App f x) = "(" ++ show f ++ " " ++ show x ++ ")"
-  show (Abs v t) = "λ" ++ v ++ "." ++ show t
-  show (Let v val body) = "let " ++ v ++ " = " ++ show val ++ " in " ++ show body
-  show (LetRec v val body) = "rec let " ++ v ++ " = " ++ show val ++ " in " ++ show body
-  show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
-  show (LitInt i) = show i
-  show (LitBool b) = show b
 
 parseProgram = parseWrapper program
 parseExpr = parseWrapper expr
@@ -60,8 +51,7 @@ expr = choice [ app
               , abstr
               , letRecExpr
               , letExpr
-              , ifExpr
-              , atom ]
+              , ifExpr ]
 
 atom :: ReadP Expr
 atom = choice [var, bracket, litInt, litBool]
@@ -74,9 +64,9 @@ var = Var <$> ident
 
 abstr :: ReadP Expr
 abstr = do
-  (char '\\' <|> char 'λ') <* space
-  xs <- sepBy1 ident space <* space
-  string "->"              <* space
+  (char '\\' <|> char 'λ')     <* space
+  xs <- sepBy1 ident space     <* space
+  (string "->" <|> string "→") <* space
   t <- expr
   return $ foldr Abs t xs
 
@@ -141,3 +131,32 @@ keywords = [ "let"
            , "True"
            , "False" ]
 
+instance Show Expr where
+  show (Var v) = v
+  show (App f x) = show f ++ " " ++ brack x
+  
+  show (Abs v t) = "λ" ++ intercalate " " vs ++ " → " ++ show t'
+    where (vs, t') = unfoldAbs (Abs v t)
+    
+  show (Let v val body) = "let " ++ v ++ " " ++ intercalate " " vs ++ " = "
+                          ++ show val' ++ " in " ++ show body
+    where (vs, val') = unfoldAbs val
+    
+  show (LetRec v val body) = "rec let " ++ v ++ " " ++ intercalate " " vs ++ " = "
+                             ++ show val' ++ " in " ++ show body
+    where (vs, val') = unfoldAbs val
+    
+  show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
+  show (LitInt i) = show i
+  show (LitBool b) = show b
+
+unfoldAbs :: Expr -> ([Ident], Expr)
+unfoldAbs (Abs v t) = (v:vs, t')
+  where (vs, t') = unfoldAbs t
+unfoldAbs t = ([], t)
+
+brack :: Expr -> String
+brack (Var v) = v
+brack (LitInt i) = show i
+brack (LitBool b) = show b
+brack e = "(" ++ show e ++ ")"
