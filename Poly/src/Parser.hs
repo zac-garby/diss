@@ -3,7 +3,8 @@ module Parser ( Expr (..)
               , Ident
               , Program
               , parseProgram
-              , parseExpr ) where
+              , parseExpr
+              , traverseExpr ) where
 
 import qualified Control.Monad.State.Lazy as S
 
@@ -30,6 +31,14 @@ data Expr = Var Ident
           | LitBool Bool
           | Hole Int
           deriving (Eq, Ord)
+
+traverseExpr :: Monad m => (Expr -> m a) -> Expr -> m a
+traverseExpr l (App f x) = traverseExpr l f >> traverseExpr l x
+traverseExpr l (Abs v t) = traverseExpr l t
+traverseExpr l (Let v val body) = traverseExpr l val >> traverseExpr l body
+traverseExpr l (LetRec v val body) = traverseExpr l val >> traverseExpr l body
+traverseExpr l (If cond t f) = traverseExpr l cond >> traverseExpr l t >> traverseExpr l f
+traverseExpr l t = l t
 
 parseProgram = parseWrapper program
 parseExpr = parseWrapper (numberHoles <$> expr)
@@ -158,7 +167,7 @@ instance Show Expr where
   show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (LitInt i) = show i
   show (LitBool b) = show b
-  show (Hole n) = "{" ++ show n ++ "}"
+  show (Hole n) = "?" ++ show n
 
 unfoldAbs :: Expr -> ([Ident], Expr)
 unfoldAbs (Abs v t) = (v:vs, t')
