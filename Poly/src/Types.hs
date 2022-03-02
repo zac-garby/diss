@@ -278,7 +278,7 @@ typecheck e t = do
   case hs of
     [] -> return $ finalise (sub s t)
     holes -> do
-      let r = makeRenamer t `compose` s
+      let r = makeRenamer (sub s t) `compose` s
       throwError $ HasHoles (sub r t) [ BoundHole (sub r th) (sub r env)
                                       | (BoundHole th env) <- holes ]
 
