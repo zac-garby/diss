@@ -3,13 +3,17 @@ module Parser ( Expr (..)
               , Ident
               , Program
               , parseProgram
-              , parseExpr ) where
+              , parseExpr
+              , traverseExpr ) where
+
+import qualified Control.Monad.State.Lazy as S
 
 import Text.ParserCombinators.ReadP
 import Data.Char
 import Data.List
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.State.Lazy
 import Control.Applicative hiding (many)
 import Debug.Trace
 
@@ -25,10 +29,11 @@ data Expr = Var Ident
           | If Expr Expr Expr
           | LitInt Int
           | LitBool Bool
+          | Hole Int
           deriving (Eq, Ord)
 
 parseProgram = parseWrapper program
-parseExpr = parseWrapper expr
+parseExpr = parseWrapper (numberHoles <$> expr)
 
 parseWrapper :: ReadP a -> FilePath -> String -> Except FilePath a
 parseWrapper p f s = case readP_to_S (space *> p <* space <* eof) s of
@@ -54,13 +59,18 @@ expr = choice [ app
               , ifExpr ]
 
 atom :: ReadP Expr
-atom = choice [var, bracket, litInt, litBool]
+atom = choice [var, hole, bracket, litInt, litBool]
 
 app :: ReadP Expr
 app = chainl1 atom (space >> return App)
 
 var :: ReadP Expr
 var = Var <$> ident
+
+hole :: ReadP Expr
+hole = do
+  string "?"
+  return $ Hole 0
 
 abstr :: ReadP Expr
 abstr = do
@@ -149,6 +159,7 @@ instance Show Expr where
   show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (LitInt i) = show i
   show (LitBool b) = show b
+  show (Hole n) = "?" ++ show n
 
 unfoldAbs :: Expr -> ([Ident], Expr)
 unfoldAbs (Abs v t) = (v:vs, t')
@@ -159,4 +170,29 @@ brack :: Expr -> String
 brack (Var v) = v
 brack (LitInt i) = show i
 brack (LitBool b) = show b
+brack (Hole n) = show (Hole n)
 brack e = "(" ++ show e ++ ")"
+
+numberHoles :: Expr -> Expr
+numberHoles e = evalState (num e) 0
+  where num :: Expr -> State Int Expr
+        num (Var v) = return $ Var v
+        num (App f x) = App <$> num f <*> num x
+        num (Abs v t) = Abs v <$> num t
+        num (Let v val body) = Let v <$> num val <*> num body
+        num (LetRec v val body) = LetRec v <$> num val <*> num body
+        num (If cond t f) = If <$> num cond <*> num t <*> num f
+        num (LitInt i) = return $ LitInt i
+        num (LitBool b) = return $ LitBool b
+        num (Hole _) = do
+          n <- S.get
+          modify (+1)
+          return $ Hole n
+          
+traverseExpr :: Monad m => (Expr -> m a) -> Expr -> m a
+traverseExpr l (App f x) = traverseExpr l f >> traverseExpr l x
+traverseExpr l (Abs v t) = traverseExpr l t
+traverseExpr l (Let v val body) = traverseExpr l val >> traverseExpr l body
+traverseExpr l (LetRec v val body) = traverseExpr l val >> traverseExpr l body
+traverseExpr l (If cond t f) = traverseExpr l cond >> traverseExpr l t >> traverseExpr l f
+traverseExpr l t = l t

@@ -24,7 +24,7 @@ data Term = CVar Index
 instance Show Term where
   show (CVar i) = show i
   show (CAbs t) = "λ." ++ show t
-  show (CApp f x) =  bracket (show f) ++ bracket (show x)
+  show (CApp f x) = bracket (show f) ++ bracket (show x)
   show (CFix t) = "fix " ++ show t
   show (CIf cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (CLitInt i) = "#" ++ show i
@@ -35,9 +35,11 @@ bracket :: String -> String
 bracket s = "(" ++ s ++ ")"
 
 data CompilerError = UndefinedVariable Ident
+                   | FoundHole Int
 
 instance Show CompilerError where
   show (UndefinedVariable v) = "undeclared variable: " ++ v
+  show (FoundHole n) = "attempted to compile an incomplete expression containing a hole"
 
 type Compiler = ReaderT [Ident] (Except CompilerError)
 
@@ -80,6 +82,7 @@ fromExpr (If cond t f) = do
 
 fromExpr (LitInt n) = return $ CLitInt n
 fromExpr (LitBool b) = return $ CLitBool b
+fromExpr (Hole n) = throwError $ FoundHole n
 
 with :: Ident -> Compiler a -> Compiler a
 with i = local (i:)
