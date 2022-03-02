@@ -36,7 +36,7 @@ data GenericType a = TyVar a
 
 instance Show (GenericType String) where
   show (TyVar v) = v
-  show (TyConstr "->" [l,r]) = bracketType l ++ " → " ++ show r
+  show (TyConstr "→" [l,r]) = bracketType l ++ " → " ++ show r
   show (TyConstr c []) = c
   show (TyConstr c ts) = c ++ " " ++ intercalate " " (map bracketType ts)
   
@@ -69,14 +69,14 @@ instance Vars Scheme where
   freeVars (Forall vs t) = freeVars t \\ vs
 
 tyInt :: Type
-tyInt = TyConstr "int" []
+tyInt = TyConstr "Int" []
 
 tyBool :: Type
-tyBool = TyConstr "bool" []
+tyBool = TyConstr "Bool" []
 
 infixr -->  
 (-->) :: Type -> Type -> Type
-a --> b = TyConstr "->" [a, b]
+a --> b = TyConstr "→" [a, b]
 
 allVars :: [Ident]
 allVars = allVars' 0
