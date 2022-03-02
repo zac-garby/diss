@@ -27,6 +27,9 @@ import Parser
 class Vars a where
   freeVars :: a -> [Ident]
 
+class Sub a where
+  sub :: Subst -> a -> a
+
 data GenericType a = TyVar a
                    | TyConstr Ident [GenericType a]
                    deriving (Eq, Ord, Traversable)
@@ -83,15 +86,15 @@ allVars = allVars' 0
 
 type Subst = [(Ident, Type)]
 
-sub :: Subst -> Type -> Type
-sub s t@(TyVar v) = fromMaybe t (lookup v s)
-sub s (TyConstr c ts) = TyConstr c (map (sub s) ts)
+instance Sub Type where
+  sub s t@(TyVar v) = fromMaybe t (lookup v s)
+  sub s (TyConstr c ts) = TyConstr c (map (sub s) ts)
 
-subScheme :: Subst -> Scheme -> Scheme
-subScheme s (Forall vs t) = Forall vs (sub s t)
+instance Sub Scheme where
+  sub s (Forall vs t) = Forall vs (sub s t)
 
-subEnv :: Subst -> Env -> Env
-subEnv s e = [ (id, subScheme s sch) | (id, sch) <- e ]
+instance Sub Env where
+  sub s e = [ (id, sub s sch) | (id, sch) <- e ]
 
 type Constraint = (Type, Type)
 
@@ -119,7 +122,7 @@ instance Show BoundHole where
 
 type Infer = RWST
   Env                         -- typing environment
-  ([Constraint], [BoundHole]) -- constraints accumulator
+  ([Constraint], [BoundHole]) -- (constraints accumulator, bound holes)
   [Ident]                     -- fresh variable names
   (Except TypeError)          -- errors
 
@@ -254,20 +257,29 @@ holesIn e = snd (W.runWriter (traverseExpr he e))
         he (Hole n) = tell [n]
         he t = return ()
 
-holeEnv :: [Int] -> Env
-holeEnv holes = [ (h, Forall [] $ TyVar h) | hole <- holes, let h = show (Hole hole) ]
+withHoles :: Expr -> Infer a -> Infer a
+withHoles e i = join $ S.evalStateT (w e i) 0
+  where w h@(Hole _) i = do
+          n <- S.get
+          modify succ
+          tv <- lift fresh
+          lift $ return $ with (show h, Forall [] $ tv) i
+        w (App f x) i = w f i >>= w x
+        w (Abs _ t) i = w t i
+        w (Let _ val body) i = w val i >>= w body
+        w (LetRec _ val body) i = w val i >>= w body
+        w (If cond t f) i = w cond i >>= w t >>= w f
+        w _ i = return i
 
 typecheck :: Env -> Expr -> Except TypeError Scheme
 typecheck e t = do
-  let holes = holesIn t
-  
-  (t, (cs, hs)) <- runInfer (holeEnv holes ++ e) (infer t)
+  (t, (cs, hs)) <- runInfer e (withHoles t $ infer t)
   s <- runUnify (solve cs)
   case hs of
     [] -> return $ finalise (sub s t)
     holes -> do
       let r = makeRenamer t `compose` s
-      throwError $ HasHoles (sub r t) [ BoundHole (sub r th) (subEnv r env)
+      throwError $ HasHoles (sub r t) [ BoundHole (sub r th) (sub r env)
                                       | (BoundHole th env) <- holes ]
 
 finalise :: Type -> Scheme

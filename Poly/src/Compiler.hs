@@ -24,7 +24,7 @@ data Term = CVar Index
 instance Show Term where
   show (CVar i) = show i
   show (CAbs t) = "λ." ++ show t
-  show (CApp f x) =  bracket (show f) ++ bracket (show x)
+  show (CApp f x) = bracket (show f) ++ bracket (show x)
   show (CFix t) = "fix " ++ show t
   show (CIf cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (CLitInt i) = "#" ++ show i

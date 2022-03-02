@@ -32,14 +32,6 @@ data Expr = Var Ident
           | Hole Int
           deriving (Eq, Ord)
 
-traverseExpr :: Monad m => (Expr -> m a) -> Expr -> m a
-traverseExpr l (App f x) = traverseExpr l f >> traverseExpr l x
-traverseExpr l (Abs v t) = traverseExpr l t
-traverseExpr l (Let v val body) = traverseExpr l val >> traverseExpr l body
-traverseExpr l (LetRec v val body) = traverseExpr l val >> traverseExpr l body
-traverseExpr l (If cond t f) = traverseExpr l cond >> traverseExpr l t >> traverseExpr l f
-traverseExpr l t = l t
-
 parseProgram = parseWrapper program
 parseExpr = parseWrapper (numberHoles <$> expr)
 
@@ -196,3 +188,11 @@ numberHoles e = evalState (num e) 0
           n <- S.get
           modify (+1)
           return $ Hole n
+          
+traverseExpr :: Monad m => (Expr -> m a) -> Expr -> m a
+traverseExpr l (App f x) = traverseExpr l f >> traverseExpr l x
+traverseExpr l (Abs v t) = traverseExpr l t
+traverseExpr l (Let v val body) = traverseExpr l val >> traverseExpr l body
+traverseExpr l (LetRec v val body) = traverseExpr l val >> traverseExpr l body
+traverseExpr l (If cond t f) = traverseExpr l cond >> traverseExpr l t >> traverseExpr l f
+traverseExpr l t = l t
