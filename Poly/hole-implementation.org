@@ -12,7 +12,7 @@
   - That's why this approach works better, but the previous approach doesn't because it's more like /let/ (where types are generalised where possible.)
   - Now /infer (Hole n)/ is very similar to /infer (Var x)/.
 - There is still an issue with this approach, though.
-  - Take =let f = ? 1 in f= again, which still doesn't work.
+  - Take =let f = ? 1 in f= 
   - In the =let= definition, the type of =f= is inferred to be some new type, say =c=. This is a monotype, since it came from =infer=, however it is then generalised by definition of =let=, yielding =\forall c . c=.
   - In the =let= body, the type of =f=, namely =\forall c . c=, is instantiated, giving a new type =d=.
   - The hole, however, still expects to be of type =Int \rightarrow b=, but this is no longer the case - it should produce a =c=.
