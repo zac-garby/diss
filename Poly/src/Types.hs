@@ -109,6 +109,9 @@ instance Sub Env where
 instance Sub Constraint where
   sub s (t1, t2) = (sub s t1, sub s t2)
 
+instance Sub BoundHole where
+  sub s (BoundHole i t e) = BoundHole i (sub s t) (sub s e)
+
 type Constraint = (Type, Type)
 
 data TypeError = UnifyInfiniteError Ident Type
@@ -218,6 +221,12 @@ type Unify = StateT Subst (Except TypeError)
 runUnify :: Unify a -> Except TypeError Subst
 runUnify u = S.execStateT u []
 
+withConstraints :: Sub a => Infer Constraint a -> ([Constraint] -> Unify b) -> Infer Constraint (a, Subst)
+withConstraints i u = do
+  (t, cs) <- listen i
+  s <- lift $ runUnify (u cs)
+  return (sub s t, s)
+
 unify :: Type -> Type -> Unify ()
 unify t1 t2 | t1 == t2 = return ()
 unify t (TyVar v) = v `extend` t
@@ -253,15 +262,18 @@ compose s1 s2 = map (fmap (sub s1)) s2 ++ s1
 
 typecheck :: Env -> Expr -> Except TypeError Scheme
 typecheck e expr = do
-  (t, cs) <- runInfer e (infer expr)
-  s <- runUnify (solve cs)
-  let t' = sub s t
+  (sch, cs) <- runInfer e (inferScheme expr)
+  return sch
+
+inferScheme :: Expr -> Infer Constraint Scheme
+inferScheme expr = do
+  (t, s) <- withConstraints (infer expr) solve
   case isComplete expr of
+    True  -> return $ finalise t
     False -> do
-      holes <- typeHoles e expr t'
+      (t', holes) <- typeHoles expr t
       let (sch, holes') = finaliseHoles t' holes
       throwError $ FoundHoles sch holes'
-    True -> return $ finalise t'
 
 finalise :: Type -> Scheme
 finalise t = let t' = rename t
@@ -271,7 +283,7 @@ finaliseHoles :: Type -> [BoundHole] -> (Scheme, [BoundHole])
 finaliseHoles t hs =
   let r = makeRenamer t
       t' = sub r t
-      hs' = [ BoundHole i (sub r h) e | BoundHole i h e <- hs ]
+      hs' = map (sub r) hs
   in (Forall (nub $ freeVars t') t', hs')
 
 rename :: Type -> Type
@@ -301,11 +313,11 @@ instance Show BoundHole where
 
     where env' = reverse $ takeWhile (\(id, _) -> head id /= '?') env
 
-typeHoles :: Env -> Expr -> Type -> Except TypeError [BoundHole]
-typeHoles e expr t = do
-  (_, cs) <- evalRWST (typeAs expr t) e (drop 26 allVars)
-  s <- runUnify (solve cs)
-  return $ holeTypes (map (sub s) cs)
+typeHoles :: Expr -> Type -> Infer Constraint (Type, [BoundHole])
+typeHoles expr t = do
+  (_, cs) <- listen $ typeAs expr t
+  s <- lift $ runUnify (solve cs)
+  return $ (sub s t, (holeTypes $ map (sub s) cs))
 
 holeTypes :: [Constraint] -> [BoundHole]
 holeTypes [] = []
@@ -339,7 +351,7 @@ typeAs (Abs x b) (TyConstr "→" [t1, t2]) = do
 typeAs (Abs x b) t = do
   t1 <- fresh
   t2 <- fresh
-  typeAs (Abs x b) (t1 --> t2)
+  with (x, Forall [] t1) $ typeAs (Abs x b) (t1 --> t2)
   t ~~ t1 --> t2
 
 typeAs (Let x v b) t = do

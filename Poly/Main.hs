@@ -47,13 +47,13 @@ handleCommand s = handleInput s
 handleInput :: String -> Interactive ()
 handleInput s = do
   t <- parseExpr "<repl>" s ?? SyntaxErr
-  (Forall _ ty) <- typecheckTerm t
+  sch <- typecheckTerm t
   env <- get
   term <- compile (fromEnvironment env) t ?? CompileErr
   
   liftIO $ do
     printTerm $ eval (subEnv (envTerms env) term)
-    putStrLn $ "  : " ++ show ty
+    putStrLn $ "  : " ++ show sch
 
 loadFiles :: [String] -> Interactive ()
 loadFiles fs = do
