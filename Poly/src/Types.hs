@@ -3,13 +3,16 @@
 module Types ( GenericType (..)
              , Scheme (..)
              , TypeError (..)
+             , HoleIndex
              , Type
              , Env
+             , Subst
+             , Constraint
              , typecheck
              , finalise
              , tyInt
              , tyBool
-             , (-->) ) where
+             , (-->) )where
 
 import qualified Control.Monad.State.Lazy as S
 import qualified Control.Monad.Writer as W
@@ -30,8 +33,11 @@ class Vars a where
 class Sub a where
   sub :: Subst -> a -> a
 
+type HoleIndex = Int
+
 data GenericType a = TyVar a
                    | TyConstr Ident [GenericType a]
+                   | TyHole HoleIndex
                    deriving (Eq, Ord, Traversable)
 
 instance Show (GenericType String) where
@@ -39,6 +45,7 @@ instance Show (GenericType String) where
   show (TyConstr "→" [l,r]) = bracketType l ++ " → " ++ show r
   show (TyConstr c []) = c
   show (TyConstr c ts) = c ++ " " ++ intercalate " " (map bracketType ts)
+  show (TyHole i) = "¿" ++ show i ++ "?"
   
 bracketType :: Type -> String
 bracketType (TyConstr c []) = c
@@ -48,10 +55,12 @@ bracketType t = show t
 instance Functor GenericType where
   fmap f (TyVar v) = TyVar (f v)
   fmap f (TyConstr c ts) = TyConstr c [ fmap f t | t <- ts ]
+  fmap _ (TyHole i) = TyHole i
 
 instance Foldable GenericType where
   foldr f s (TyVar v) = f v s
   foldr f s (TyConstr c ts) = foldr (\t b -> foldr f b t) s ts
+  foldr _ s (TyHole _) = s
 
 type Type = GenericType Ident
 type Env = [(Ident, Scheme)]
@@ -74,7 +83,7 @@ tyInt = TyConstr "Int" []
 tyBool :: Type
 tyBool = TyConstr "Bool" []
 
-infixr -->  
+infixr 2 -->
 (-->) :: Type -> Type -> Type
 a --> b = TyConstr "→" [a, b]
 
@@ -89,6 +98,7 @@ type Subst = [(Ident, Type)]
 instance Sub Type where
   sub s t@(TyVar v) = fromMaybe t (lookup v s)
   sub s (TyConstr c ts) = TyConstr c (map (sub s) ts)
+  sub s (TyHole i) = TyHole i
 
 instance Sub Scheme where
   sub s (Forall vs t) = Forall vs (sub s t)
@@ -96,37 +106,32 @@ instance Sub Scheme where
 instance Sub Env where
   sub s e = [ (id, sub s sch) | (id, sch) <- e ]
 
+instance Sub Constraint where
+  sub s (t1, t2) = (sub s t1, sub s t2)
+
 type Constraint = (Type, Type)
 
 data TypeError = UnifyInfiniteError Ident Type
                | UnifyConstructorsError Ident Ident
                | UnifyConstructorArityMismatch Ident Int Int
                | UnboundVariableError Ident
-               | HasHoles Type [BoundHole]
+               | FoundHoles Scheme [BoundHole]
 
 instance Show TypeError where
   show (UnifyInfiniteError v t) = "could not construct infinite type " ++ v ++ " ~ " ++ show t
   show (UnifyConstructorsError c1 c2) = "could not unify different constructors " ++ c1 ++ " and " ++ c2
   show (UnifyConstructorArityMismatch c a1 a2) = "constructor arity mismatch for " ++ c ++ ": " ++ show a1 ++ " vs " ++ show a2
   show (UnboundVariableError v) = "unbound variable: " ++ v
-  show (HasHoles ty hs) = "found holes in term of type : " ++ show ty ++ "\n" ++ intercalate "\n" (map show hs)
+  show (FoundHoles sch hs) = "found holes in " ++ show sch ++ ":\n"
+                             ++ unlines (map show hs)
 
-data BoundHole = BoundHole Type Env
+type Infer c = RWST
+  Env                -- typing environment
+  [c]                -- constraints accumulator
+  [Ident]            -- fresh variable names
+  (Except TypeError) -- errors
 
-instance Show BoundHole where
-  show (BoundHole ty env)
-    | null env' = "    hole : " ++ show ty ++ "\n      no relevant bindings"
-    | otherwise = "    hole : " ++ show ty ++ "\n      relevant bindings include:\n"
-                            ++ intercalate "\n" [ "        " ++ id ++ " : " ++ show t | (id, t) <- env' ]
-    where env' = takeWhile (\(id, _) -> head id /= '?') env
-
-type Infer = RWST
-  Env                         -- typing environment
-  ([Constraint], [BoundHole]) -- (constraints accumulator, bound holes)
-  [Ident]                     -- fresh variable names
-  (Except TypeError)          -- errors
-
-infer :: Expr -> Infer Type
+infer :: Expr -> Infer Constraint Type
 
 infer (Var x) = do
   env <- ask
@@ -134,14 +139,7 @@ infer (Var x) = do
     Nothing -> throwError $ UnboundVariableError x
     Just t -> instantiate t
 
-infer (Hole n) = do
-  env <- ask
-  case lookup ("?" ++ show n) env of
-    Nothing -> error "hole variable not defined in the env - this shouldn't happen"
-    Just t -> do
-      ty <- instantiate t
-      tell ([], [BoundHole ty env])
-      return ty
+infer (Hole i) = return $ TyHole i
 
 infer (Abs x e) = do
   tv <- fresh
@@ -154,12 +152,12 @@ infer (App f x) = do
   tx <- infer x
   tv <- fresh
   
-  tf ~~ (tx --> tv)
+  tf ~~ tx --> tv
   
   return tv
 
 infer (Let x e b) = do
-  (te, (cs, _)) <- listen $ infer e
+  (te, cs) <- listen $ infer e
   s <- lift $ runUnify (solve cs)
   sch <- generalise (sub s te) -- fixed bug: let two = (\n -> add n 1) 1 in two
   with (x, sch) (infer b)
@@ -185,33 +183,34 @@ infer (If cond t f) = do
 infer (LitInt _) = return tyInt
 infer (LitBool _) = return tyBool
 
-runInfer :: Env -> Infer a -> Except TypeError (a, ([Constraint], [BoundHole]))
+runInfer :: Env -> Infer c a -> Except TypeError (a, [c])
 runInfer env i = evalRWST i env allVars
 
-instantiate :: Scheme -> Infer Type
+instantiate :: Scheme -> Infer c Type
 instantiate (Forall vs t) = do
   vs' <- zip vs <$> mapM (const freshName) vs
   return $ fmap (\v -> fromMaybe v (lookup v vs')) t
 
-generalise :: Type -> Infer Scheme
+generalise :: Type -> Infer c Scheme
 generalise t = do
   env <- ask
   let freeEnv = concat [ freeVars t | (_, t) <- env ]
   return $ Forall (freeVars t \\ freeEnv) t
 
-freshName :: Infer Ident
+freshName :: Infer c Ident
 freshName = do
   name <- gets head
   modify tail
   return name
 
-fresh :: Infer Type
+fresh :: Infer c Type
 fresh = fmap TyVar freshName
 
-(~~) :: Type -> Type -> Infer ()
-(~~) a b = tell ([(a, b)], [])
+infixl 1 ~~
+(~~) :: Type -> Type -> Infer Constraint ()
+(~~) a b = tell [(a, b)]
 
-with :: (Ident, Scheme) -> Infer a -> Infer a
+with :: (Ident, Scheme) -> Infer c a -> Infer c a
 with p = local (p :)
 
 type Unify = StateT Subst (Except TypeError)
@@ -222,8 +221,9 @@ runUnify u = S.execStateT u []
 unify :: Type -> Type -> Unify ()
 unify t1 t2 | t1 == t2 = return ()
 unify t (TyVar v) = v `extend` t
-
 unify (TyVar v) t = v `extend` t
+unify t h@(TyHole _) = return ()
+unify h@(TyHole _) t = return ()
 unify (TyConstr c1 ts1) (TyConstr c2 ts2)
   | c1 /= c2 = throwError $ UnifyConstructorsError c1 c2
   | a1 /= a2 = throwError $ UnifyConstructorArityMismatch c1 a1 a2
@@ -251,40 +251,28 @@ v `extend` t | t == TyVar v = return ()
 compose :: Subst -> Subst -> Subst
 compose s1 s2 = map (fmap (sub s1)) s2 ++ s1
 
-holesIn :: Expr -> [Int]
-holesIn e = snd (W.runWriter (traverseExpr he e))
-  where he :: Expr -> W.Writer [Int] ()
-        he (Hole n) = tell [n]
-        he t = return ()
-
-withHoles :: Expr -> Infer a -> Infer a
-withHoles e i = join $ S.evalStateT (w e i) 0
-  where w h@(Hole _) i = do
-          n <- S.get
-          modify succ
-          tv <- lift fresh
-          lift $ return $ with (show h, Forall [] $ tv) i
-        w (App f x) i = w f i >>= w x
-        w (Abs _ t) i = w t i
-        w (Let _ val body) i = w val i >>= w body
-        w (LetRec _ val body) i = w val i >>= w body
-        w (If cond t f) i = w cond i >>= w t >>= w f
-        w _ i = return i
-
 typecheck :: Env -> Expr -> Except TypeError Scheme
-typecheck e t = do
-  (t, (cs, hs)) <- runInfer e (withHoles t $ infer t)
+typecheck e expr = do
+  (t, cs) <- runInfer e (infer expr)
   s <- runUnify (solve cs)
-  case hs of
-    [] -> return $ finalise (sub s t)
-    holes -> do
-      let r = makeRenamer (sub s t) `compose` s
-      throwError $ HasHoles (sub r t) [ BoundHole (sub r th) (sub r env)
-                                      | (BoundHole th env) <- holes ]
+  let t' = sub s t
+  case isComplete expr of
+    False -> do
+      holes <- typeHoles e expr t'
+      let (sch, holes') = finaliseHoles t' holes
+      throwError $ FoundHoles sch holes'
+    True -> return $ finalise t'
 
 finalise :: Type -> Scheme
 finalise t = let t' = rename t
              in Forall (nub $ freeVars t') t'
+
+finaliseHoles :: Type -> [BoundHole] -> (Scheme, [BoundHole])
+finaliseHoles t hs =
+  let r = makeRenamer t
+      t' = sub r t
+      hs' = [ BoundHole i (sub r h) e | BoundHole i h e <- hs ]
+  in (Forall (nub $ freeVars t') t', hs')
 
 rename :: Type -> Type
 rename t = sub (makeRenamer t) t
@@ -298,3 +286,81 @@ makeRenamer t = snd $ S.execState (traverse mk t) (allVars, [])
           case lookup v existing of
             Just n -> return ()
             Nothing -> S.put (rest, (v, TyVar new) : existing)
+
+
+data BoundHole = BoundHole HoleIndex Type Env
+
+instance Show BoundHole where
+  show (BoundHole i ty env)
+    | null env' = "    ?" ++ show i ++ " : " ++ show ty
+                  ++ "\n      no relevant bindings"
+    | otherwise = "    ?" ++ show i ++ " : " ++ show ty
+                  ++ "\n      relevant bindings include:\n"
+                  ++ intercalate "\n" [ "        " ++ id ++ " : " ++ show t
+                                      | (id, t) <- env' ]
+
+    where env' = reverse $ takeWhile (\(id, _) -> head id /= '?') env
+
+typeHoles :: Env -> Expr -> Type -> Except TypeError [BoundHole]
+typeHoles e expr t = do
+  (_, cs) <- evalRWST (typeAs expr t) e (drop 26 allVars)
+  s <- runUnify (solve cs)
+  return $ holeTypes (map (sub s) cs)
+
+holeTypes :: [Constraint] -> [BoundHole]
+holeTypes [] = []
+holeTypes ((TyHole i, t):cs) = (BoundHole i t []) : holeTypes cs
+holeTypes ((t, TyHole i):cs) = (BoundHole i t []) : holeTypes cs
+holeTypes (_:cs) = holeTypes cs
+
+-- types an expression, assuming it's already consistent with a given type.
+-- this means that holes can infer their types from context.
+typeAs :: Expr -> Type -> Infer Constraint ()
+
+typeAs (Var x) t = do
+  env <- ask
+  case lookup x env of
+    Nothing -> error $ "weird error with variable: " ++ show x
+    Just sch -> do
+      t' <- instantiate sch
+      t ~~ t'
+  
+typeAs (LitInt n) t = tyInt ~~ t
+typeAs (LitBool b) t = tyBool ~~ t
+
+typeAs (App f x) t = do
+  tx <- fresh
+  typeAs f (tx --> t)
+  typeAs x tx
+
+typeAs (Abs x b) (TyConstr "→" [t1, t2]) = do
+  with (x, Forall [] t1) $ typeAs b t2
+
+typeAs (Abs x b) t = do
+  t1 <- fresh
+  t2 <- fresh
+  typeAs (Abs x b) (t1 --> t2)
+  t ~~ t1 --> t2
+
+typeAs (Let x v b) t = do
+  tv <- fresh
+  (_, cs) <- listen $ typeAs v tv
+  s <- lift $ runUnify (solve cs)
+  -- sch <- generalise (sub s tv)
+  with (x, Forall [] (sub s tv)) $ typeAs b t
+
+typeAs (If c true false) t = do
+  typeAs c tyBool
+  typeAs true t
+  typeAs false t
+
+typeAs (Hole n) t = TyHole n ~~ t
+
+isComplete :: Expr -> Bool
+isComplete (Hole _) = False
+isComplete (App f x) = isComplete f && isComplete x
+isComplete (Abs _ e) = isComplete e
+isComplete (Let _ e b) = isComplete e && isComplete b
+isComplete (LetRec _ e b) = isComplete e && isComplete b
+isComplete (If c t f) = all isComplete [c, t, f]
+isComplete _ = True
