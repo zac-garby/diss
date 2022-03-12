@@ -123,7 +123,7 @@ instance Show TypeError where
   show (UnifyConstructorArityMismatch c a1 a2) = "constructor arity mismatch for " ++ c ++ ": " ++ show a1 ++ " vs " ++ show a2
   show (UnboundVariableError v) = "unbound variable: " ++ v
   show (FoundHoles sch hs) = "found holes in " ++ show sch ++ ":\n"
-                             ++ unlines (map show hs)
+                             ++ intercalate "\n" (map show hs)
 
 type Infer c = RWST
   Env                -- typing environment
@@ -320,7 +320,7 @@ typeAs :: Expr -> Type -> Infer Constraint ()
 typeAs (Var x) t = do
   env <- ask
   case lookup x env of
-    Nothing -> error $ "weird error with variable: " ++ show x
+    Nothing -> throwError $ UnboundVariableError x
     Just sch -> do
       t' <- instantiate sch
       t ~~ t'
