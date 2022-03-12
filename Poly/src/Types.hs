@@ -344,10 +344,29 @@ typeAs (Abs x b) t = do
 
 typeAs (Let x v b) t = do
   tv <- fresh
-  (_, cs) <- listen $ typeAs v tv
+  typeAs v tv
+  {-(_, cs) <- listen $ typeAs v tv
   s <- lift $ runUnify (solve cs)
-  -- sch <- generalise (sub s tv)
-  with (x, Forall [] (sub s tv)) $ typeAs b t
+  -- sch <- generalise (sub s tv)-}
+  with (x, Forall [] tv) $ typeAs b t
+
+{-
+infer (LetRec x e b) = do
+  tv <- fresh
+  te <- with (x, Forall [] tv) (infer e)
+  
+  te ~~ tv
+
+  with (x, Forall [] tv) (infer b)
+-}
+typeAs (LetRec x v b) t = do
+  tx <- fresh
+  tv <- fresh
+  with (x, Forall [] tx) (typeAs v tv)
+
+  tx ~~ tv
+
+  with (x, Forall [] tx) (typeAs b t)
 
 typeAs (If c true false) t = do
   typeAs c tyBool
@@ -357,10 +376,9 @@ typeAs (If c true false) t = do
 typeAs (Hole n) t = TyHole n ~~ t
 
 isComplete :: Expr -> Bool
-isComplete (Hole _) = False
-isComplete (App f x) = isComplete f && isComplete x
-isComplete (Abs _ e) = isComplete e
-isComplete (Let _ e b) = isComplete e && isComplete b
-isComplete (LetRec _ e b) = isComplete e && isComplete b
-isComplete (If c t f) = all isComplete [c, t, f]
-isComplete _ = True
+isComplete = null . holesIn
+
+holesIn :: Expr -> [HoleIndex]
+holesIn = foldExpr (++) $ \e -> case e of
+                                 Hole i -> [i]
+                                 _ -> []

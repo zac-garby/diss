@@ -4,6 +4,7 @@ module Parser ( Expr (..)
               , Program
               , parseProgram
               , parseExpr
+              , foldExpr
               , traverseExpr ) where
 
 import qualified Control.Monad.State.Lazy as S
@@ -188,11 +189,14 @@ numberHoles e = evalState (num e) 0
           n <- S.get
           modify (+1)
           return $ Hole n
-          
+
+foldExpr :: (a -> a -> a) -> (Expr -> a) -> Expr -> a
+foldExpr c l (App f x) = foldExpr c l f `c` foldExpr c l x 
+foldExpr c l (Abs v t) = foldExpr c l t
+foldExpr c l (Let v val body) = foldExpr c l body `c` foldExpr c l val
+foldExpr c l (LetRec v val body) = foldExpr c l body `c` foldExpr c l val
+foldExpr c l (If cond t f) = foldExpr c l f `c` foldExpr c l t `c` foldExpr c l cond
+foldExpr c l t = l t
+
 traverseExpr :: Monad m => (Expr -> m a) -> Expr -> m a
-traverseExpr l (App f x) = traverseExpr l f >> traverseExpr l x
-traverseExpr l (Abs v t) = traverseExpr l t
-traverseExpr l (Let v val body) = traverseExpr l val >> traverseExpr l body
-traverseExpr l (LetRec v val body) = traverseExpr l val >> traverseExpr l body
-traverseExpr l (If cond t f) = traverseExpr l cond >> traverseExpr l t >> traverseExpr l f
-traverseExpr l t = l t
+traverseExpr = foldExpr (>>)
