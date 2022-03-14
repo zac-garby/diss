@@ -2,6 +2,8 @@ module Compiler ( Term (..)
                 , CompilerError (..)
                 , Index
                 , outputShow
+                , clist2list
+                , list2clist
                 , compile ) where
 
 import Data.List
@@ -100,7 +102,7 @@ fromExpr (LitInt n) = return $ CLitInt n
 fromExpr (LitBool b) = return $ CLitBool b
 fromExpr (LitList xs) = do
   xs' <- mapM fromExpr xs
-  return $ foldr CLitCons CLitNil xs'
+  return $ list2clist xs'
 fromExpr (Hole i) = throwError FoundHole
 
 with :: Ident -> Compiler a -> Compiler a
@@ -112,3 +114,6 @@ clist2list (CLitCons h t) = do
   return $ h : rest
 clist2list CLitNil = return []
 clist2list _ = Nothing
+
+list2clist :: [Term] -> Term
+list2clist = foldr CLitCons CLitNil

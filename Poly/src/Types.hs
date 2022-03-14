@@ -12,6 +12,7 @@ module Types ( GenericType (..)
              , finalise
              , tyInt
              , tyBool
+             , tyList
              , (-->) )where
 
 import qualified Control.Monad.State.Lazy as S
