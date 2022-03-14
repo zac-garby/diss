@@ -75,7 +75,7 @@ instance Vars Type where
   freeVars = foldr (:) []
 
 instance Vars Scheme where
-  freeVars (Forall vs t) = freeVars t \\ vs
+  freeVars (Forall vs t) = nub (freeVars t) \\ vs
 
 tyInt :: Type
 tyInt = TyConstr "Int" []
@@ -213,7 +213,7 @@ instantiate (Forall vs t) = do
 generalise :: Type -> Infer c Scheme
 generalise t = do
   env <- ask
-  let freeEnv = concat [ freeVars t | (_, t) <- env ]
+  let freeEnv = concat [ freeVars ty | (_, ty) <- env ]
   return $ Forall (freeVars t \\ freeEnv) t
 
 freshName :: Infer c Ident
