@@ -21,7 +21,9 @@ evalStep t = asum $ map ($t) [ evalAppAbs
                              , evalApp1
                              , evalApp2
                              , evalIf
-                             , evalFix ]
+                             , evalFix
+                             , evalHead
+                             , evalTail ]
 
 evalApp1 :: Term -> Maybe Term
 evalApp1 (CApp t1 t2) = do
@@ -52,6 +54,18 @@ evalIf (CIf cond t f) = do
   return $ CIf cond' t f
 evalIf _ = Nothing
 
+evalHead :: Term -> Maybe Term
+evalHead (CLitCons h t) = do
+  h' <- evalStep h
+  return $ CLitCons h' t
+evalHead _ = Nothing
+
+evalTail :: Term -> Maybe Term
+evalTail (CLitCons h t) = do
+  t' <- evalStep t
+  return $ CLitCons h t'
+evalTail _ = Nothing
+
 isValue :: Term -> Bool
 isValue = isNothing . evalStep
 
@@ -67,6 +81,8 @@ shift' d c (CFix t) = CFix (shift' d c t)
 shift' d c (CIf cond t f) = CIf (shift' d c cond) (shift' d c t) (shift' d c f)
 shift' d c (CLitInt i) = CLitInt i
 shift' d c (CLitBool b) = CLitBool b
+shift' d c (CLitNil) = CLitNil
+shift' d c (CLitCons a b) = CLitCons (shift' d c a) (shift' d c b)
 shift' d c (CBuiltin f) = CBuiltin f
 
 (-->) :: Int -> Term -> Term -> Term
@@ -78,4 +94,6 @@ shift' d c (CBuiltin f) = CBuiltin f
 (j --> s) (CIf cond t f) = CIf ((j --> s) cond) ((j --> s) t) ((j --> s) f)
 (j --> s) (CLitInt i) = CLitInt i
 (j --> s) (CLitBool b) = CLitBool b
+(j --> s) (CLitNil) = CLitNil
+(j --> s) (CLitCons a b) = CLitCons ((j --> s) a) ((j --> s) b)
 (j --> s) (CBuiltin f) = CBuiltin f

@@ -4,8 +4,7 @@ module Parser ( Expr (..)
               , Program
               , parseProgram
               , parseExpr
-              , foldExpr
-              , traverseExpr ) where
+              , foldExpr ) where
 
 import qualified Control.Monad.State.Lazy as S
 
@@ -30,6 +29,7 @@ data Expr = Var Ident
           | If Expr Expr Expr
           | LitInt Int
           | LitBool Bool
+          | LitList [Expr]
           | Hole Int
           deriving (Eq, Ord)
 
@@ -60,7 +60,7 @@ expr = choice [ app
               , ifExpr ]
 
 atom :: ReadP Expr
-atom = choice [var, hole, bracket, litInt, litBool]
+atom = choice [var, hole, bracket, litInt, litBool, litList]
 
 app :: ReadP Expr
 app = chainl1 atom (space >> return App)
@@ -111,6 +111,13 @@ litInt = LitInt <$> int
 litBool :: ReadP Expr
 litBool = LitBool . read <$> (string "True" <|> string "False")
 
+litList :: ReadP Expr
+litList = do
+  string "[" <* space
+  exprs <- sepBy expr (space >> string "," >> space)
+  string "]" <* space
+  return $ LitList exprs
+
 bracket :: ReadP Expr
 bracket = do
   char '('  <* space
@@ -160,6 +167,7 @@ instance Show Expr where
   show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (LitInt i) = show i
   show (LitBool b) = show b
+  show (LitList xs) = "[" ++ intercalate ", " (map show xs) ++ "]"
   show (Hole n) = "?" ++ show n
 
 unfoldAbs :: Expr -> ([Ident], Expr)
@@ -185,18 +193,17 @@ numberHoles e = evalState (num e) 0
         num (If cond t f) = If <$> num cond <*> num t <*> num f
         num (LitInt i) = return $ LitInt i
         num (LitBool b) = return $ LitBool b
+        num (LitList xs) = LitList <$> mapM num xs
         num (Hole _) = do
           n <- S.get
           modify (+1)
           return $ Hole n
 
-foldExpr :: (a -> a -> a) -> (Expr -> a) -> Expr -> a
-foldExpr c l (App f x) = foldExpr c l f `c` foldExpr c l x 
-foldExpr c l (Abs v t) = foldExpr c l t
-foldExpr c l (Let v val body) = foldExpr c l body `c` foldExpr c l val
-foldExpr c l (LetRec v val body) = foldExpr c l body `c` foldExpr c l val
-foldExpr c l (If cond t f) = foldExpr c l f `c` foldExpr c l t `c` foldExpr c l cond
-foldExpr c l t = l t
-
-traverseExpr :: Monad m => (Expr -> m a) -> Expr -> m a
-traverseExpr = foldExpr (>>)
+foldExpr :: (a -> a -> a) -> (Expr -> a) -> a -> Expr -> a
+foldExpr c l a (App f x) = foldExpr c l a f `c` foldExpr c l a x 
+foldExpr c l a (Abs v t) = foldExpr c l a t
+foldExpr c l a (Let v val body) = foldExpr c l a body `c` foldExpr c l a val
+foldExpr c l a (LetRec v val body) = foldExpr c l a body `c` foldExpr c l a val
+foldExpr c l a (If cond t f) = foldExpr c l a f `c` foldExpr c l a t `c` foldExpr c l a cond
+foldExpr c l a (LitList xs) = foldr c a (map (foldExpr c l a) xs)
+foldExpr c l a t = l t
