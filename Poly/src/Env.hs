@@ -15,20 +15,17 @@ defaultEnv = [ ("add", intBinOp (+))
              , ("mul", intBinOp (*))
              , ("div", intBinOp div)
              , ("eq", ( finalise $ tyInt --> tyInt --> tyBool
-                      , intFn $ \m -> intFn $ \n -> CLitBool (m == n) ))
-             , ("head", listOp head)
-             , ("tail", listOp (list2clist . tail))
+                      , toTerm ((==) :: Int -> Int -> Bool) ))
+             , ("head", ( finalise $ tyList a --> a
+                        , listFn head ))
+             , ("tail", ( finalise $ tyList a --> tyList a
+                        , listFn $ list2clist . tail))
              , ("cons", ( finalise $ a --> tyList a --> tyList a
                         , CBuiltin $ \h -> listFn (list2clist . (h:)))) ]
 
 intBinOp :: (Int -> Int -> Int) -> (Scheme, Term)
-intBinOp f = (ty, t)
-  where ty = finalise (tyInt --> tyInt --> tyInt)
-        t = intFn $ \m -> intFn $ \n -> CLitInt (f m n)
-
-listOp :: ([Term] -> Term) -> (Scheme, Term)
-listOp f = (ty, listFn f)
-  where ty = finalise (tyList a --> tyList a)
+intBinOp f = ( finalise $ tyInt --> tyInt --> tyInt
+             , toTerm f)
 
 intFn :: (Int -> Term) -> Term
 intFn f = CBuiltin $ \(CLitInt n) -> f n
