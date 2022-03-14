@@ -83,6 +83,9 @@ tyInt = TyConstr "Int" []
 tyBool :: Type
 tyBool = TyConstr "Bool" []
 
+tyList :: Type -> Type
+tyList t = TyConstr "List" [t]
+
 infixr 2 -->
 (-->) :: Type -> Type -> Type
 a --> b = TyConstr "→" [a, b]
@@ -185,6 +188,13 @@ infer (If cond t f) = do
 
 infer (LitInt _) = return tyInt
 infer (LitBool _) = return tyBool
+
+infer (LitList xs) = do
+  t <- fresh
+  forM_ xs $ \x -> do
+    tx <- infer x
+    t ~~ tx
+  return $ tyList t
 
 runInfer :: Env -> Infer c a -> Except TypeError (a, [c])
 runInfer env i = evalRWST i env allVars
@@ -339,6 +349,7 @@ typeAs (Var x) t = do
   
 typeAs (LitInt n) t = tyInt ~~ t
 typeAs (LitBool b) t = tyBool ~~ t
+typeAs (LitList xs) t = return ()
 
 typeAs (App f x) t = do
   tx <- fresh
@@ -391,6 +402,6 @@ isComplete :: Expr -> Bool
 isComplete = null . holesIn
 
 holesIn :: Expr -> [HoleIndex]
-holesIn = foldExpr (++) $ \e -> case e of
-                                 Hole i -> [i]
-                                 _ -> []
+holesIn = foldExpr (++) f []
+  where f (Hole i) = [i]
+        f _ = []

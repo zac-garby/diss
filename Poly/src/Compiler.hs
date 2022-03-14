@@ -1,8 +1,10 @@
 module Compiler ( Term (..)
                 , CompilerError (..)
                 , Index
+                , outputShow
                 , compile ) where
 
+import Data.List
 import Control.Monad.Reader
 import Control.Monad.Except
 import Debug.Trace
@@ -19,6 +21,8 @@ data Term = CVar Index
           | CIf Term Term Term
           | CLitInt Int
           | CLitBool Bool
+          | CLitNil
+          | CLitCons Term Term
           | CBuiltin (Term -> Term)
 
 instance Show Term where
@@ -29,7 +33,19 @@ instance Show Term where
   show (CIf cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (CLitInt i) = "#" ++ show i
   show (CLitBool b) = show b
+  show (CLitNil) = "[]"
+  show (CLitCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
   show (CBuiltin f) = "<builtin>"
+
+outputShow :: Term -> Maybe String
+outputShow (CLitInt i) = Just $ show i
+outputShow (CLitBool b) = Just $ show b
+outputShow (CLitNil) = Just "[]"
+outputShow c@(CLitCons h t) = do
+  ts <- clist2list c
+  strings <- mapM outputShow ts
+  return $ "[" ++ intercalate ", " strings ++ "]"
+outputShow _ = Nothing
 
 bracket :: String -> String
 bracket s = "(" ++ s ++ ")"
@@ -82,13 +98,17 @@ fromExpr (If cond t f) = do
 
 fromExpr (LitInt n) = return $ CLitInt n
 fromExpr (LitBool b) = return $ CLitBool b
+fromExpr (LitList xs) = do
+  xs' <- mapM fromExpr xs
+  return $ foldr CLitCons CLitNil xs'
 fromExpr (Hole i) = throwError FoundHole
 
 with :: Ident -> Compiler a -> Compiler a
 with i = local (i:)
   
-elemIndex :: Eq a => a -> [a] -> Maybe Int
-elemIndex x [] = Nothing
-elemIndex x (y:ys)
-  | x == y = return 0
-  | otherwise = (1+) <$> elemIndex x ys
+clist2list :: Term -> Maybe [Term]
+clist2list (CLitCons h t) = do
+  rest <- clist2list t
+  return $ h : rest
+clist2list CLitNil = return []
+clist2list _ = Nothing

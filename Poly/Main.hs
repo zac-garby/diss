@@ -99,9 +99,9 @@ restore oldEnv err = do
   put oldEnv
 
 printTerm :: Term -> IO ()
-printTerm (CLitInt n) = putStrLn $ "  = " ++ show n
-printTerm (CLitBool b) = putStrLn $ "  = " ++ show b
-printTerm _ = return ()
+printTerm t = case outputShow t of
+  Just s -> putStrLn $ "  = " ++ s
+  Nothing -> return ()
 
 insertKV :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 insertKV k v [] = [(k, v)]
