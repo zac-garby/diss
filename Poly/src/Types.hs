@@ -196,12 +196,6 @@ infer (LitList xs) = do
     t ~~ tx
   return $ tyList t
 
-infer (LitCons hd tl) = do
-  thd <- infer hd
-  ttl <- infer tl
-  tyList thd ~~ ttl
-  return $ tyList thd
-
 runInfer :: Env -> Infer c a -> Except TypeError (a, [c])
 runInfer env i = evalRWST i env allVars
 
@@ -356,7 +350,6 @@ typeAs (Var x) t = do
 typeAs (LitInt n) t = tyInt ~~ t
 typeAs (LitBool b) t = tyBool ~~ t
 typeAs (LitList xs) t = return ()
-typeAs (LitCons hd tl) t = return ()
 
 typeAs (App f x) t = do
   tx <- fresh

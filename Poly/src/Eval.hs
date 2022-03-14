@@ -69,6 +69,7 @@ evalTail _ = Nothing
 isProper :: EvalType -> Term -> Bool
 isProper Full = isValue
 isProper WHNF = isWHNF
+isProper None = const True
 
 isValue :: Term -> Bool
 isValue = isNothing . evalStep

@@ -18,7 +18,7 @@ import Types
 
 type Index = Int
 
-data EvalType = Full | WHNF
+data EvalType = Full | WHNF | None
   deriving (Show, Eq)
 
 data Term = CVar Index
@@ -109,7 +109,6 @@ fromExpr (LitBool b) = return $ CLitBool b
 fromExpr (LitList xs) = do
   xs' <- mapM fromExpr xs
   return $ foldr CLitCons CLitNil xs'
-fromExpr (LitCons hd tl) = CLitCons <$> fromExpr hd <*> fromExpr tl
 fromExpr (Hole i) = throwError FoundHole
 
 with :: Ident -> Compiler a -> Compiler a

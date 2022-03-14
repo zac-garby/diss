@@ -21,31 +21,31 @@ fix f = f (fix f).
 append xs ys =
   if null xs
   then ys
-  else (head xs) :: append (tail xs) ys.
+  else cons (head xs) (append (tail xs) ys).
 
 rev-aux xs acc =
   if null xs
   then acc
-  else rev-aux (tail xs) ((head xs) :: acc).
+  else rev-aux (tail xs) (cons (head xs) acc).
   
 rev xs = rev-aux xs [].
 
 take n xs =
   if eq n 0
   then []
-  else (head xs) :: take (sub n 1) (tail xs).
+  else cons (head xs) (take (sub n 1) (tail xs)).
 
-seq n = n :: seq (add n 1).
+seq n = cons n (seq (add n 1)).
 
 range m n =
   if eq m n
   then [m]
-  else m :: range (add m 1) n.
+  else cons m (range (add m 1) n).
 
 map f xs =
   if null xs
   then []
-  else (f (head xs)) :: map f (tail xs).
+  else cons (f (head xs)) (map f (tail xs)).
 
 foldr f z xs =
   if null xs
