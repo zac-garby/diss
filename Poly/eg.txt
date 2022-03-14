@@ -37,7 +37,17 @@ take n xs =
 
 seq n = n :: seq (add n 1).
 
+range m n =
+  if eq m n
+  then [m]
+  else m :: range (add m 1) n.
+
 map f xs =
   if null xs
   then []
   else (f (head xs)) :: map f (tail xs).
+
+foldr f z xs =
+  if null xs
+  then z
+  else f (head xs) (foldr f z (tail xs)).
