@@ -49,8 +49,7 @@ instance Show (GenericType String) where
   show (TyHole i) = "¿" ++ show i ++ "?"
   
 bracketType :: Type -> String
-bracketType (TyConstr c []) = c
-bracketType t@(TyConstr _ _) = "(" ++ show t ++ ")"
+bracketType t@(TyConstr "→" _) = "(" ++ show t ++ ")"
 bracketType t = show t
 
 instance Functor GenericType where
