@@ -1,9 +1,10 @@
 module Compiler ( Term (..)
                 , CompilerError (..)
+                , Value (..)
                 , Index
-                , outputShow
-                , clist2list
                 , list2clist
+                , clist2list
+                , outputShow
                 , compile ) where
 
 import Data.List
@@ -102,12 +103,15 @@ fromExpr (LitInt n) = return $ CLitInt n
 fromExpr (LitBool b) = return $ CLitBool b
 fromExpr (LitList xs) = do
   xs' <- mapM fromExpr xs
-  return $ list2clist xs'
+  return $ foldr CLitCons CLitNil xs'
 fromExpr (Hole i) = throwError FoundHole
 
 with :: Ident -> Compiler a -> Compiler a
 with i = local (i:)
-  
+
+list2clist :: [Term] -> Term
+list2clist = foldr CLitCons CLitNil
+
 clist2list :: Term -> Maybe [Term]
 clist2list (CLitCons h t) = do
   rest <- clist2list t
@@ -115,5 +119,24 @@ clist2list (CLitCons h t) = do
 clist2list CLitNil = return []
 clist2list _ = Nothing
 
-list2clist :: [Term] -> Term
-list2clist = foldr CLitCons CLitNil
+class Value a where
+  toTerm :: a -> Term
+  fromTerm :: Term -> a
+
+instance Value Int where
+  toTerm n = CLitInt n
+  fromTerm (CLitInt n) = n
+
+instance Value Bool where
+  toTerm b = CLitBool b
+  fromTerm (CLitBool b) = b
+
+instance Value a => Value [a] where
+  toTerm xs = foldr CLitCons CLitNil (map toTerm xs)
+
+  fromTerm (CLitCons h t) = fromTerm h : fromTerm t
+  fromTerm CLitNil = []
+
+instance (Value a, Value b) => Value (a -> b) where
+  toTerm f = CBuiltin $ \t -> toTerm (f (fromTerm t))
+  fromTerm (CBuiltin f) = \a -> fromTerm (f (toTerm a))
