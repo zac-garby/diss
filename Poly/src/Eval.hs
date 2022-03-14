@@ -21,7 +21,9 @@ evalStep t = asum $ map ($t) [ evalAppAbs
                              , evalApp1
                              , evalApp2
                              , evalIf
-                             , evalFix ]
+                             , evalFix
+                             , evalHead
+                             , evalTail ]
 
 evalApp1 :: Term -> Maybe Term
 evalApp1 (CApp t1 t2) = do
@@ -51,6 +53,18 @@ evalIf (CIf cond t f) = do
   cond' <- evalStep cond
   return $ CIf cond' t f
 evalIf _ = Nothing
+
+evalHead :: Term -> Maybe Term
+evalHead (CLitCons h t) = do
+  h' <- evalStep h
+  return $ CLitCons h' t
+evalHead _ = Nothing
+
+evalTail :: Term -> Maybe Term
+evalTail (CLitCons h t) = do
+  t' <- evalStep t
+  return $ CLitCons h t'
+evalTail _ = Nothing
 
 isValue :: Term -> Bool
 isValue = isNothing . evalStep

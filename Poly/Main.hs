@@ -100,8 +100,8 @@ restore oldEnv err = do
 
 printTerm :: Term -> IO ()
 printTerm t = case outputShow t of
-  Just s -> putStrLn $ "  = " ++ s
-  Nothing -> return ()
+                Just s -> putStrLn $ "  = " ++ s
+                Nothing -> return ()
 
 insertKV :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 insertKV k v [] = [(k, v)]
