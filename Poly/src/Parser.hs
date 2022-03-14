@@ -30,6 +30,7 @@ data Expr = Var Ident
           | LitInt Int
           | LitBool Bool
           | LitList [Expr]
+          | LitCons Expr Expr
           | Hole Int
           deriving (Eq, Ord)
 
@@ -54,6 +55,7 @@ def = do
 
 expr :: ReadP Expr
 expr = choice [ app
+              , cons
               , abstr
               , letRecExpr
               , letExpr
@@ -64,6 +66,13 @@ atom = choice [var, hole, bracket, litInt, litBool, litList]
 
 app :: ReadP Expr
 app = chainl1 atom (space >> return App)
+
+cons :: ReadP Expr
+cons = do
+  hd <- atom <* space
+  string "::" <* space
+  tl <- expr
+  return $ LitCons hd tl
 
 var :: ReadP Expr
 var = Var <$> ident
@@ -168,6 +177,7 @@ instance Show Expr where
   show (LitInt i) = show i
   show (LitBool b) = show b
   show (LitList xs) = "[" ++ intercalate ", " (map show xs) ++ "]"
+  show (LitCons hd tl) = show hd ++ " :: " ++ brack tl
   show (Hole n) = "?" ++ show n
 
 unfoldAbs :: Expr -> ([Ident], Expr)
@@ -194,6 +204,7 @@ numberHoles e = evalState (num e) 0
         num (LitInt i) = return $ LitInt i
         num (LitBool b) = return $ LitBool b
         num (LitList xs) = LitList <$> mapM num xs
+        num (LitCons hd tl) = LitCons <$> num hd <*> num tl
         num (Hole _) = do
           n <- S.get
           modify (+1)
@@ -206,4 +217,5 @@ foldExpr c l a (Let v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (LetRec v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (If cond t f) = foldExpr c l a f `c` foldExpr c l a t `c` foldExpr c l a cond
 foldExpr c l a (LitList xs) = foldr c a (map (foldExpr c l a) xs)
+foldExpr c l a (LitCons hd tl) = foldExpr c l a hd `c` foldExpr c l a tl
 foldExpr c l a t = l t

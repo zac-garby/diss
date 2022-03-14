@@ -17,11 +17,11 @@ defaultEnv = [ ("add", intBinOp (+))
              , ("eq", ( finalise $ tyInt --> tyInt --> tyBool
                       , toTerm ((==) :: Int -> Int -> Bool) ))
              , ("head", ( finalise $ tyList a --> a
-                        , listFn head ))
+                        , CBuiltin $ \(CLitCons hd _) -> hd ))
              , ("tail", ( finalise $ tyList a --> tyList a
                         , listFn $ list2clist . tail))
-             , ("cons", ( finalise $ a --> tyList a --> tyList a
-                        , CBuiltin $ \h -> listFn (list2clist . (h:)))) ]
+             , ("null", ( finalise $ tyList a --> tyBool
+                        , listFn $ toTerm . null )) ]
 
 intBinOp :: (Int -> Int -> Int) -> (Scheme, Term)
 intBinOp f = ( finalise $ tyInt --> tyInt --> tyInt

@@ -104,6 +104,7 @@ fromExpr (LitBool b) = return $ CLitBool b
 fromExpr (LitList xs) = do
   xs' <- mapM fromExpr xs
   return $ foldr CLitCons CLitNil xs'
+fromExpr (LitCons hd tl) = CLitCons <$> fromExpr hd <*> fromExpr tl
 fromExpr (Hole i) = throwError FoundHole
 
 with :: Ident -> Compiler a -> Compiler a
