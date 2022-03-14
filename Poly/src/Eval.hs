@@ -39,7 +39,7 @@ evalApp2 _ = Nothing
 
 evalAppAbs :: Term -> Maybe Term
 evalAppAbs (CApp (CAbs t12) v2) = return $ shift (-1) ((0 --> shift 1 v2) t12)
-evalAppAbs (CApp (CBuiltin f) v) | isValue v = return $ f v
+evalAppAbs (CApp (CBuiltin t f) v) | isProper t v = return $ f v
 evalAppAbs _ = Nothing
 
 evalFix :: Term -> Maybe Term
@@ -66,8 +66,16 @@ evalTail (CLitCons h t) = do
   return $ CLitCons h t'
 evalTail _ = Nothing
 
+isProper :: EvalType -> Term -> Bool
+isProper Full = isValue
+isProper WHNF = isWHNF
+
 isValue :: Term -> Bool
 isValue = isNothing . evalStep
+
+isWHNF :: Term -> Bool
+isWHNF (CLitCons h _) = isValue h
+isWHNF t = isValue t
 
 shift :: Int -> Term -> Term
 shift d = shift' d 0
@@ -83,7 +91,7 @@ shift' d c (CLitInt i) = CLitInt i
 shift' d c (CLitBool b) = CLitBool b
 shift' d c (CLitNil) = CLitNil
 shift' d c (CLitCons a b) = CLitCons (shift' d c a) (shift' d c b)
-shift' d c (CBuiltin f) = CBuiltin f
+shift' d c (CBuiltin t f) = CBuiltin t f
 
 (-->) :: Int -> Term -> Term -> Term
 (j --> s) (CVar n) | j == n = s
@@ -96,4 +104,4 @@ shift' d c (CBuiltin f) = CBuiltin f
 (j --> s) (CLitBool b) = CLitBool b
 (j --> s) (CLitNil) = CLitNil
 (j --> s) (CLitCons a b) = CLitCons ((j --> s) a) ((j --> s) b)
-(j --> s) (CBuiltin f) = CBuiltin f
+(j --> s) (CBuiltin t f) = CBuiltin t f

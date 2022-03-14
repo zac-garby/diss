@@ -1,4 +1,5 @@
 module Compiler ( Term (..)
+                , EvalType (..)
                 , CompilerError (..)
                 , Value (..)
                 , Index
@@ -17,6 +18,9 @@ import Types
 
 type Index = Int
 
+data EvalType = Full | WHNF
+  deriving (Show, Eq)
+
 data Term = CVar Index
           | CAbs Term
           | CApp Term Term
@@ -26,7 +30,7 @@ data Term = CVar Index
           | CLitBool Bool
           | CLitNil
           | CLitCons Term Term
-          | CBuiltin (Term -> Term)
+          | CBuiltin EvalType (Term -> Term)
 
 instance Show Term where
   show (CVar i) = show i
@@ -38,7 +42,8 @@ instance Show Term where
   show (CLitBool b) = show b
   show (CLitNil) = "[]"
   show (CLitCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
-  show (CBuiltin f) = "<builtin>"
+  show (CBuiltin Full f) = "<builtin>"
+  show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
 
 outputShow :: Term -> Maybe String
 outputShow (CLitInt i) = Just $ show i
@@ -139,5 +144,5 @@ instance Value a => Value [a] where
   fromTerm CLitNil = []
 
 instance (Value a, Value b) => Value (a -> b) where
-  toTerm f = CBuiltin $ \t -> toTerm (f (fromTerm t))
-  fromTerm (CBuiltin f) = \a -> fromTerm (f (toTerm a))
+  toTerm f = CBuiltin Full $ \t -> toTerm (f (fromTerm t))
+  fromTerm (CBuiltin _ f) = \a -> fromTerm (f (toTerm a))
