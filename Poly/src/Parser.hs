@@ -30,6 +30,7 @@ data Expr = Var Ident
           | LitInt Int
           | LitBool Bool
           | LitList [Expr]
+          | LitChar Char
           | Hole Int
           deriving (Eq, Ord)
 
@@ -60,7 +61,7 @@ expr = choice [ app
               , ifExpr ]
 
 atom :: ReadP Expr
-atom = choice [var, hole, bracket, litInt, litBool, litList]
+atom = choice [var, hole, bracket, litInt, litBool, litChar, litList]
 
 app :: ReadP Expr
 app = chainl1 atom (space >> return App)
@@ -110,6 +111,13 @@ litInt = LitInt <$> int
 
 litBool :: ReadP Expr
 litBool = LitBool . read <$> (string "True" <|> string "False")
+
+litChar :: ReadP Expr
+litChar = do
+  char '\''
+  c <- satisfy (/= '\'')
+  char '\''
+  return $ LitChar c
 
 litList :: ReadP Expr
 litList = do
@@ -167,6 +175,7 @@ instance Show Expr where
   show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (LitInt i) = show i
   show (LitBool b) = show b
+  show (LitChar c) = show c
   show (LitList xs) = "[" ++ intercalate ", " (map show xs) ++ "]"
   show (Hole n) = "?" ++ show n
 
@@ -193,6 +202,7 @@ numberHoles e = evalState (num e) 0
         num (If cond t f) = If <$> num cond <*> num t <*> num f
         num (LitInt i) = return $ LitInt i
         num (LitBool b) = return $ LitBool b
+        num (LitChar c) = return $ LitChar c
         num (LitList xs) = LitList <$> mapM num xs
         num (Hole _) = do
           n <- S.get

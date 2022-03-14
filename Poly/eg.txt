@@ -35,6 +35,11 @@ take n xs =
   then []
   else cons (head xs) (take (sub n 1) (tail xs)).
 
+drop n xs =
+  if eq n 0
+  then xs
+  else drop (sub n 1) (tail xs).
+
 seq n = cons n (seq (add n 1)).
 
 range m n =
@@ -51,3 +56,8 @@ foldr f z xs =
   if null xs
   then z
   else f (head xs) (foldr f z (tail xs)).
+
+length xs =
+  if null xs
+  then 0
+  else add 1 (length (tail xs)).

@@ -12,6 +12,7 @@ module Types ( GenericType (..)
              , finalise
              , tyInt
              , tyBool
+             , tyChar
              , tyList
              , (-->) )where
 
@@ -83,6 +84,9 @@ tyInt = TyConstr "Int" []
 
 tyBool :: Type
 tyBool = TyConstr "Bool" []
+
+tyChar :: Type
+tyChar = TyConstr "Char" []
 
 tyList :: Type -> Type
 tyList t = TyConstr "List" [t]
@@ -189,6 +193,7 @@ infer (If cond t f) = do
 
 infer (LitInt _) = return tyInt
 infer (LitBool _) = return tyBool
+infer (LitChar _) = return tyChar
 
 infer (LitList xs) = do
   t <- fresh
@@ -350,6 +355,7 @@ typeAs (Var x) t = do
   
 typeAs (LitInt n) t = tyInt ~~ t
 typeAs (LitBool b) t = tyBool ~~ t
+typeAs (LitChar c) t = tyChar ~~ t
 typeAs (LitList xs) t = return ()
 
 typeAs (App f x) t = do

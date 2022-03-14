@@ -28,6 +28,7 @@ data Term = CVar Index
           | CIf Term Term Term
           | CLitInt Int
           | CLitBool Bool
+          | CLitChar Char
           | CLitNil
           | CLitCons Term Term
           | CBuiltin EvalType (Term -> Term)
@@ -40,6 +41,7 @@ instance Show Term where
   show (CIf cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (CLitInt i) = "#" ++ show i
   show (CLitBool b) = show b
+  show (CLitChar c) = show c
   show (CLitNil) = "[]"
   show (CLitCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
   show (CBuiltin Full f) = "<builtin>"
@@ -48,6 +50,7 @@ instance Show Term where
 outputShow :: Term -> Maybe String
 outputShow (CLitInt i) = Just $ show i
 outputShow (CLitBool b) = Just $ show b
+outputShow (CLitChar c) = Just $ show c
 outputShow (CLitNil) = Just "[]"
 outputShow c@(CLitCons h t) = do
   ts <- clist2list c
@@ -106,6 +109,7 @@ fromExpr (If cond t f) = do
 
 fromExpr (LitInt n) = return $ CLitInt n
 fromExpr (LitBool b) = return $ CLitBool b
+fromExpr (LitChar c) = return $ CLitChar c
 fromExpr (LitList xs) = do
   xs' <- mapM fromExpr xs
   return $ foldr CLitCons CLitNil xs'
@@ -135,6 +139,10 @@ instance Value Int where
 instance Value Bool where
   toTerm b = CLitBool b
   fromTerm (CLitBool b) = b
+
+instance Value Char where
+  toTerm c = CLitChar c
+  fromTerm (CLitChar c) = c
 
 instance Value a => Value [a] where
   toTerm xs = foldr CLitCons CLitNil (map toTerm xs)
