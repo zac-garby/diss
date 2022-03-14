@@ -44,6 +44,7 @@ data GenericType a = TyVar a
 instance Show (GenericType String) where
   show (TyVar v) = v
   show (TyConstr "→" [l,r]) = bracketType l ++ " → " ++ show r
+  show (TyConstr "List" [t]) = "[" ++ show t ++ "]"
   show (TyConstr c []) = c
   show (TyConstr c ts) = c ++ " " ++ intercalate " " (map bracketType ts)
   show (TyHole i) = "¿" ++ show i ++ "?"
