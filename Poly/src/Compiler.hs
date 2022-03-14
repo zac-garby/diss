@@ -52,6 +52,9 @@ outputShow (CLitInt i) = Just $ show i
 outputShow (CLitBool b) = Just $ show b
 outputShow (CLitChar c) = Just $ show c
 outputShow (CLitNil) = Just "[]"
+outputShow c@(CLitCons (CLitChar _) _) = do
+  cs <- clist2list c
+  return $ "\"" ++ map (\(CLitChar c) -> c) cs ++ "\""
 outputShow c@(CLitCons h t) = do
   ts <- clist2list c
   strings <- mapM outputShow ts

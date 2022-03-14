@@ -61,7 +61,8 @@ expr = choice [ app
               , ifExpr ]
 
 atom :: ReadP Expr
-atom = choice [var, hole, bracket, litInt, litBool, litChar, litList]
+atom = choice [ var, hole, bracket
+              , litInt, litBool, litChar, litList, litString]
 
 app :: ReadP Expr
 app = chainl1 atom (space >> return App)
@@ -125,6 +126,13 @@ litList = do
   exprs <- sepBy expr (space >> string "," >> space)
   string "]" <* space
   return $ LitList exprs
+
+litString :: ReadP Expr
+litString = do
+  char '"'
+  s <- many $ satisfy (/= '"')
+  char '"'
+  return $ LitList (map LitChar s)
 
 bracket :: ReadP Expr
 bracket = do

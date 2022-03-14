@@ -14,6 +14,7 @@ module Types ( GenericType (..)
              , tyBool
              , tyChar
              , tyList
+             , tyString
              , (-->) )where
 
 import qualified Control.Monad.State.Lazy as S
@@ -90,6 +91,9 @@ tyChar = TyConstr "Char" []
 
 tyList :: Type -> Type
 tyList t = TyConstr "List" [t]
+
+tyString :: Type
+tyString = tyList tyChar
 
 infixr 2 -->
 (-->) :: Type -> Type -> Type
