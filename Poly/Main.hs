@@ -2,6 +2,7 @@ module Main where
 
 import System.IO
 import Data.List
+import Text.Parsec (ParseError)
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
@@ -15,12 +16,12 @@ import Env
 type Interactive = ExceptT Error (StateT Environment IO)
 
 data Error = TypeErr TypeError
-           | SyntaxErr FilePath
+           | SyntaxErr ParseError
            | CompileErr CompilerError
 
 instance Show Error where
   show (TypeErr te) = show te
-  show (SyntaxErr fp) = "syntax error in " ++ fp
+  show (SyntaxErr fp) = show fp
   show (CompileErr ce) = show ce
 
 main :: IO ()
