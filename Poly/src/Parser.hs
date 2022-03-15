@@ -37,6 +37,20 @@ data Expr = Var Ident
 
 type Parser = Parsec String Int
 
+data Associativity = LeftAssoc | RightAssoc
+  deriving (Show, Eq, Ord)
+
+type Operators = [(Associativity, [(Ident, Ident)])]
+
+ops :: Operators
+ops = [ (LeftAssoc,  [ ("==", "__eq") ])
+      , (RightAssoc, [ ("::", "__cons") ])
+      , (LeftAssoc,  [ ("++", "__app"), ("+", "__add"), ("-", "__sub") ])
+      , (LeftAssoc,  [ ("*", "__mul"), ("/", "__div") ]) ]
+
+allOps :: Operators -> [(Ident, Ident)]
+allOps ops = concat [ os | (_, os) <- ops ]
+
 parseProgram = parseWrapper program
 parseExpr = parseWrapper expr
 
@@ -49,10 +63,7 @@ program :: Parser Program
 program = sepEndBy def (keyword ".")
 
 expr :: Parser Expr
-expr = mkOpParser term [ [ ("==", "__eq") ]
-                       , [ ("::", "__cons") ]
-                       , [ ("++", "__app"), ("+", "__add"), ("-", "__sub") ]
-                       , [ ("*", "__mul"), ("/", "__div") ] ]
+expr = mkOpParser term ops
 
 term :: Parser Expr
 term = choice [ try app, abstr, try letRecExpr, letExpr, ifExpr ]
@@ -97,7 +108,7 @@ ifExpr = do
   return $ If cond positive negative
 
 atom :: Parser Expr
-atom = choice [ var, hole, bracket, list, litInt, litBool, litChar, litString ]
+atom = choice [ var, hole, try section, bracket, list, litInt, litBool, litChar, litString ]
   <?> "atomic expression"
 
 var :: Parser Expr
@@ -109,6 +120,10 @@ hole = do
   h <- getState
   modifyState (+1)
   return $ Hole h
+
+section :: Parser Expr
+section = parens $ choice [ try (string o >> return (Var to))
+                          | (o, to) <- allOps ops ]
 
 bracket :: Parser Expr
 bracket = parens expr
@@ -197,12 +212,16 @@ keywords = [ "let"
            , "True"
            , "False" ]
 
-mkOpParser :: Parser Expr -> [[(Ident, Ident)]] -> Parser Expr
+mkOpParser :: Parser Expr -> Operators -> Parser Expr
 mkOpParser p [] = p
-mkOpParser p (op:rest) = chainl1 next mkOp
+mkOpParser p ((assoc, ops):rest) = assocFn assoc next mkOp
   where next = mkOpParser p rest
-        mkOp = choice [ try (keyword o) >> return (\l r -> App (App (Var to) l) r)
-                      | (o, to) <- op ]
+        mkOp = choice [ try (keyword op) >> return (\l r -> App (App (Var to) l) r)
+                      | (op, to) <- ops ]
+
+assocFn :: Associativity -> Parser a -> Parser (a -> a -> a) -> Parser a
+assocFn LeftAssoc = chainl1
+assocFn RightAssoc = chainr1
 
 {-
 instance Show Expr where
