@@ -6,6 +6,5 @@
 ** Hoogle-like interface built-in
 ** AST editing directly
 ** =a : T= notation
-** Infix operators
-*** User-defined infix operators?
+** User-defined infix operators?
 ** Tuples

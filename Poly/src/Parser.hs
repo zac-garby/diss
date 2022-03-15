@@ -2,23 +2,24 @@ module Parser ( Expr (..)
               , Definition (..)
               , Ident
               , Program
-              , parseProgram
               , parseExpr
+              , parseProgram
               , foldExpr ) where
 
 import qualified Control.Monad.State.Lazy as S
 
-import Text.ParserCombinators.ReadP
+import Text.Parsec
 import Data.Char
 import Data.List
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Lazy
-import Control.Applicative hiding (many)
+-- import Control.Applicative hiding (many)
 import Debug.Trace
 
 type Ident = String
 data Definition = Definition Ident Expr
+  deriving Show
 type Program = [Definition]
 
 data Expr = Var Ident
@@ -32,132 +33,178 @@ data Expr = Var Ident
           | LitList [Expr]
           | LitChar Char
           | Hole Int
-          deriving (Eq, Ord)
+          deriving (Show, Eq, Ord)
+
+type Parser = Parsec String Int
+
+data Associativity = LeftAssoc | RightAssoc
+  deriving (Show, Eq, Ord)
+
+type Operators = [(Associativity, [(Ident, Ident)])]
+
+ops :: Operators
+ops = [ (LeftAssoc,  [ ("==", "__eq") ])
+      , (RightAssoc, [ ("::", "__cons") ])
+      , (LeftAssoc,  [ ("++", "__app"), ("+", "__add"), ("-", "__sub") ])
+      , (LeftAssoc,  [ ("*", "__mul"), ("/", "__div") ]) ]
+
+allOps :: Operators -> [(Ident, Ident)]
+allOps ops = concat [ os | (_, os) <- ops ]
 
 parseProgram = parseWrapper program
-parseExpr = parseWrapper (numberHoles <$> expr)
+parseExpr = parseWrapper expr
 
-parseWrapper :: ReadP a -> FilePath -> String -> Except FilePath a
-parseWrapper p f s = case readP_to_S (space *> p <* space <* eof) s of
-  ((a, _):_) -> return a
-  _ -> throwError f
+parseWrapper :: Parser a -> FilePath -> String -> Except ParseError a
+parseWrapper p f s = case runParser p 0 f s of
+  Left e -> throwError e
+  Right a -> return a
 
-program :: ReadP Program
-program = sepBy (def <* space <* char '.') space
+program :: Parser Program
+program = sepEndBy def (keyword ".")
 
-def :: ReadP Definition
-def = do
-  name <- ident             <* space
-  args <- sepBy ident space <* space
-  char '='                  <* space
-  body <- expr
-  return $ Definition name (foldr Abs body args)
+expr :: Parser Expr
+expr = mkOpParser term ops
 
-expr :: ReadP Expr
-expr = choice [ app
-              , abstr
-              , letRecExpr
-              , letExpr
-              , ifExpr ]
+term :: Parser Expr
+term = choice [ try app, abstr, try letRecExpr, letExpr, ifExpr ]
+       <?> "term"
 
-atom :: ReadP Expr
-atom = choice [ var, hole, bracket
-              , litInt, litBool, litChar, litList, litString]
+app :: Parser Expr
+app = chainl1 atom (whitespace >> return App)
 
-app :: ReadP Expr
-app = chainl1 atom (space >> return App)
-
-var :: ReadP Expr
-var = Var <$> ident
-
-hole :: ReadP Expr
-hole = do
-  string "?"
-  return $ Hole 0
-
-abstr :: ReadP Expr
+abstr :: Parser Expr
 abstr = do
-  (char '\\' <|> char 'λ')     <* space
-  xs <- sepBy1 ident space     <* space
-  (string "->" <|> string "→") <* space
-  t <- expr
-  return $ foldr Abs t xs
+  lambda
+  xs <- idents
+  arrow
+  body <- expr
+  return $ foldr Abs body xs
 
-letRecExpr :: ReadP Expr
+letRecExpr :: Parser Expr
 letRecExpr = do
-  string "rec" <* space
-  (Let n v b) <- letExpr
-  return $ LetRec n v b
+  keyword "let"
+  keyword "rec"
+  Definition n v <- def
+  keyword "in"
+  body <- expr
+  return $ LetRec n v body
 
-letExpr :: ReadP Expr
+letExpr :: Parser Expr
 letExpr = do
-  string "let"          <* space
-  Definition n v <- def <* space
-  string "in"           <* space
+  keyword "let"
+  Definition n v <- def
+  keyword "in"
   body <- expr
   return $ Let n v body
 
-ifExpr :: ReadP Expr
+ifExpr :: Parser Expr
 ifExpr = do
-  string "if"      <* space
-  cond <- expr     <* space
-  string "then"    <* space
-  positive <- expr <* space
-  string "else"    <* space
+  keyword "if"
+  cond <- expr
+  keyword "then"
+  positive <- expr
+  keyword "else"
   negative <- expr
   return $ If cond positive negative
 
-litInt :: ReadP Expr
-litInt = LitInt <$> int
+atom :: Parser Expr
+atom = choice [ var, hole, try section, bracket, list, litInt, litBool, litChar, litString ]
+  <?> "atomic expression"
 
-litBool :: ReadP Expr
-litBool = LitBool . read <$> (string "True" <|> string "False")
+var :: Parser Expr
+var = lexeme $ Var <$> ident
 
-litChar :: ReadP Expr
-litChar = do
+hole :: Parser Expr
+hole = do
+  keyword "?"
+  h <- getState
+  modifyState (+1)
+  return $ Hole h
+
+section :: Parser Expr
+section = parens $ choice [ try (string o >> return (Var to))
+                          | (o, to) <- allOps ops ]
+
+bracket :: Parser Expr
+bracket = parens expr
+
+list :: Parser Expr
+list = between listStart listEnd $ do
+  LitList <$> sepBy expr (keyword ",")
+
+litInt :: Parser Expr
+litInt = lexeme $ LitInt <$> int
+
+litBool :: Parser Expr
+litBool = lexeme $ LitBool . read <$> (keyword "True" <|> keyword "False")
+
+litChar :: Parser Expr
+litChar = lexeme $ do
   char '\''
   c <- satisfy (/= '\'')
   char '\''
   return $ LitChar c
 
-litList :: ReadP Expr
-litList = do
-  string "[" <* space
-  exprs <- sepBy expr (space >> string "," >> space)
-  string "]" <* space
-  return $ LitList exprs
-
-litString :: ReadP Expr
-litString = do
+litString :: Parser Expr
+litString = lexeme $ do
   char '"'
   s <- many $ satisfy (/= '"')
   char '"'
   return $ LitList (map LitChar s)
 
-bracket :: ReadP Expr
-bracket = do
-  char '('  <* space
-  t <- expr <* space
-  char ')'
-  return t
-
-ident :: ReadP Ident
-ident = do
-  id <- (:) <$> satisfy isLetter <*> munch validIdent
+ident :: Parser Ident
+ident = try $ lexeme $ do
+  id <- (:) <$> satisfy validFirstId <*> many (satisfy validIdent)
   guard $ not (id `elem` keywords)
   return id
 
-int :: ReadP Int
-int = read <$> munch1 isDigit
+idents :: Parser [Ident]
+idents = sepEndBy1 ident whitespace
 
-space :: ReadP ()
-space = skipMany (satisfy isSpace)
+int :: Parser Int
+int = lexeme $ read <$> many1 (satisfy isDigit)
+
+whitespace :: Parser ()
+whitespace = void $ many $ oneOf " \n\t"
+
+lexeme :: Parser a -> Parser a
+lexeme p = p <* whitespace
+
+def :: Parser Definition
+def = lexeme $ do
+  name <- ident
+  args <- sepBy ident whitespace
+  equals
+  body <- expr
+  return $ Definition name (foldr Abs body args)
+
+lambda = keyword "\\" <|> keyword "λ"
+  <?> "lambda"
+
+arrow = keyword "->" <|> keyword "→"
+  <?> "arrow"
+
+equals = keyword "="
+  <?> "equals"
+
+listStart = keyword "["
+listEnd = keyword "]"
+
+parens :: Parser a -> Parser a
+parens = between (lexeme $ char '(') (lexeme $ char ')')
+
+keyword :: String -> Parser String
+keyword = try . lexeme . string
 
 validIdent :: Char -> Bool
 validIdent c = isAlphaNum c || c `elem` "_-'"
 
+validFirstId :: Char -> Bool
+validFirstId c = isLetter c || c `elem` "_"
+
 keywords :: [Ident]
 keywords = [ "let"
+           , "rec"
            , "in"
            , "if"
            , "then"
@@ -165,6 +212,18 @@ keywords = [ "let"
            , "True"
            , "False" ]
 
+mkOpParser :: Parser Expr -> Operators -> Parser Expr
+mkOpParser p [] = p
+mkOpParser p ((assoc, ops):rest) = assocFn assoc next mkOp
+  where next = mkOpParser p rest
+        mkOp = choice [ try (keyword op) >> return (\l r -> App (App (Var to) l) r)
+                      | (op, to) <- ops ]
+
+assocFn :: Associativity -> Parser a -> Parser (a -> a -> a) -> Parser a
+assocFn LeftAssoc = chainl1
+assocFn RightAssoc = chainr1
+
+{-
 instance Show Expr where
   show (Var v) = v
   show (App f x) = show f ++ " " ++ brack x
@@ -186,6 +245,7 @@ instance Show Expr where
   show (LitChar c) = show c
   show (LitList xs) = "[" ++ intercalate ", " (map show xs) ++ "]"
   show (Hole n) = "?" ++ show n
+-}
 
 unfoldAbs :: Expr -> ([Ident], Expr)
 unfoldAbs (Abs v t) = (v:vs, t')
@@ -198,24 +258,6 @@ brack (LitInt i) = show i
 brack (LitBool b) = show b
 brack (Hole n) = show (Hole n)
 brack e = "(" ++ show e ++ ")"
-
-numberHoles :: Expr -> Expr
-numberHoles e = evalState (num e) 0
-  where num :: Expr -> State Int Expr
-        num (Var v) = return $ Var v
-        num (App f x) = App <$> num f <*> num x
-        num (Abs v t) = Abs v <$> num t
-        num (Let v val body) = Let v <$> num val <*> num body
-        num (LetRec v val body) = LetRec v <$> num val <*> num body
-        num (If cond t f) = If <$> num cond <*> num t <*> num f
-        num (LitInt i) = return $ LitInt i
-        num (LitBool b) = return $ LitBool b
-        num (LitChar c) = return $ LitChar c
-        num (LitList xs) = LitList <$> mapM num xs
-        num (Hole _) = do
-          n <- S.get
-          modify (+1)
-          return $ Hole n
 
 foldExpr :: (a -> a -> a) -> (Expr -> a) -> a -> Expr -> a
 foldExpr c l a (App f x) = foldExpr c l a f `c` foldExpr c l a x 
