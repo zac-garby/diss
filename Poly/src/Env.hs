@@ -10,11 +10,11 @@ a = TyVar "a"
 b = TyVar "b"
 
 defaultEnv :: Environment
-defaultEnv = [ ("add", intBinOp (+))
-             , ("sub", intBinOp (-))
-             , ("mul", intBinOp (*))
-             , ("div", intBinOp div)
-             , ("eq", ( finalise $ tyInt --> tyInt --> tyBool
+defaultEnv = [ ("__add", intBinOp (+))
+             , ("__sub", intBinOp (-))
+             , ("__mul", intBinOp (*))
+             , ("__div", intBinOp div)
+             , ("__eq", ( finalise $ tyInt --> tyInt --> tyBool
                       , toTerm ((==) :: Int -> Int -> Bool) ))
              , ("head", ( finalise $ tyList a --> a
                         , CBuiltin WHNF headFn ))
@@ -22,7 +22,7 @@ defaultEnv = [ ("add", intBinOp (+))
                         , CBuiltin WHNF tailFn ))
              , ("null", ( finalise $ tyList a --> tyBool
                         , CBuiltin WHNF nullFn ))
-             , ("cons", ( finalise $ a --> tyList a --> tyList a
+             , ("__cons", ( finalise $ a --> tyList a --> tyList a
                         , CBuiltin None $ \h ->
                             CBuiltin None $ \t -> CLitCons h t )) ]
 

@@ -49,8 +49,14 @@ program :: Parser Program
 program = sepEndBy def (keyword ".")
 
 expr :: Parser Expr
-expr = choice [ try app, abstr, try letRecExpr, letExpr, ifExpr ]
-       <?> "expression"
+expr = mkOpParser term [ [ ("==", "__eq") ]
+                       , [ ("::", "__cons") ]
+                       , [ ("++", "__app"), ("+", "__add"), ("-", "__sub") ]
+                       , [ ("*", "__mul"), ("/", "__div") ] ]
+
+term :: Parser Expr
+term = choice [ try app, abstr, try letRecExpr, letExpr, ifExpr ]
+       <?> "term"
 
 app :: Parser Expr
 app = chainl1 atom (whitespace >> return App)
@@ -149,12 +155,6 @@ whitespace = void $ many $ oneOf " \n\t"
 lexeme :: Parser a -> Parser a
 lexeme p = p <* whitespace
 
-symbol :: String -> Parser String
-symbol s = try $ lexeme $ do
-  s' <- many1 (oneOf "+-*/=:")
-  guard $ s == s'
-  return s
-
 def :: Parser Definition
 def = lexeme $ do
   name <- ident
@@ -182,7 +182,7 @@ keyword :: String -> Parser String
 keyword = try . lexeme . string
 
 validIdent :: Char -> Bool
-validIdent c = isAlphaNum c || c `elem` "_'"
+validIdent c = isAlphaNum c || c `elem` "_-'"
 
 validFirstId :: Char -> Bool
 validFirstId c = isLetter c || c `elem` "_"
@@ -196,6 +196,13 @@ keywords = [ "let"
            , "else"
            , "True"
            , "False" ]
+
+mkOpParser :: Parser Expr -> [[(Ident, Ident)]] -> Parser Expr
+mkOpParser p [] = p
+mkOpParser p (op:rest) = chainl1 next mkOp
+  where next = mkOpParser p rest
+        mkOp = choice [ try (keyword o) >> return (\l r -> App (App (Var to) l) r)
+                      | (o, to) <- op ]
 
 {-
 instance Show Expr where
