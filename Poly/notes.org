@@ -1,7 +1,11 @@
-* Potential areas to explore
+* Potential areas to explore / things to implement
 ** Simultaneous equations in files
 ** Pattern matching
 ** User-defined data types
 ** "Holes" and/or a message saying what type an undeclared variable name should have been
 ** Hoogle-like interface built-in
 ** AST editing directly
+** =a : T= notation
+** Infix operators
+*** User-defined infix operators?
+** Tuples
