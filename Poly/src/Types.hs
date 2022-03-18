@@ -360,7 +360,11 @@ typeAs (Var x) t = do
 typeAs (LitInt n) t = tyInt ~~ t
 typeAs (LitBool b) t = tyBool ~~ t
 typeAs (LitChar c) t = tyChar ~~ t
-typeAs (LitList xs) t = return ()
+
+typeAs (LitList xs) t = do
+  tv <- fresh
+  forM_ xs $ \x -> do
+    typeAs x tv
 
 typeAs (App f x) t = do
   tx <- fresh
@@ -379,20 +383,8 @@ typeAs (Abs x b) t = do
 typeAs (Let x v b) t = do
   tv <- fresh
   typeAs v tv
-  {-(_, cs) <- listen $ typeAs v tv
-  s <- lift $ runUnify (solve cs)
-  -- sch <- generalise (sub s tv)-}
   with (x, Forall [] tv) $ typeAs b t
 
-{-
-infer (LetRec x e b) = do
-  tv <- fresh
-  te <- with (x, Forall [] tv) (infer e)
-  
-  te ~~ tv
-
-  with (x, Forall [] tv) (infer b)
--}
 typeAs (LetRec x v b) t = do
   tx <- fresh
   tv <- fresh
