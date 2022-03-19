@@ -42,6 +42,7 @@ handleCommand :: String -> Interactive ()
 handleCommand "" = repl
 handleCommand (':':'l':rest) = loadFiles (words rest)
 handleCommand (':':'b':rest) = browse
+handleCommand (':':'t':rest) = checkType rest
 handleCommand (':':'h':rest) = help
 handleCommand s = handleInput s
 
@@ -67,11 +68,18 @@ browse = do
   forM_ env $ \(name, (sch, t)) ->
     liftIO $ putStrLn $ "  " ++ pprintIdent ops name ++ " : " ++ show sch
 
+checkType :: String -> Interactive ()
+checkType s = do
+  t <- parseExpr "<repl>" s ?? SyntaxErr
+  sch <- typecheckTerm t
+  liftIO $ putStrLn $ "  : " ++ show sch
+
 help :: Interactive ()
 help = liftIO $ do
   putStrLn "  Usage"
   putStrLn "    :l  load file(s)"
   putStrLn "    :b  browse loaded globals"
+  putStrLn "    :t  derive the type of a term without evaluating"
   putStrLn "    :h  show this help message"
 
 typecheckTerm :: Expr -> Interactive Scheme
