@@ -60,8 +60,10 @@ pprintIdent ((_, level):ops) id = case find ((== id) . snd) level of
   Just (op, _) -> "(" ++ op ++ ")"
   Nothing -> pprintIdent ops id
 
-parseProgram = parseWrapper program
-parseExpr = parseWrapper expr
+parseProgram = parseWrapper (only program)
+parseExpr = parseWrapper (only expr)
+
+only p = whitespace *> p <* whitespace <* eof
 
 parseWrapper :: Parser a -> FilePath -> String -> Except ParseError a
 parseWrapper p f s = case runParser p 0 f s of
