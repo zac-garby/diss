@@ -2,8 +2,10 @@ module Parser ( Expr (..)
               , Definition (..)
               , Ident
               , Program
+              , ops
               , parseExpr
               , parseProgram
+              , pprintIdent
               , foldExpr ) where
 
 import qualified Control.Monad.State.Lazy as S
@@ -45,11 +47,18 @@ type Operators = [(Associativity, [(Ident, Ident)])]
 ops :: Operators
 ops = [ (LeftAssoc,  [ ("==", "__eq") ])
       , (RightAssoc, [ ("::", "__cons") ])
+      , (RightAssoc, [ (".", "__comp") ])
       , (LeftAssoc,  [ ("++", "__app"), ("+", "__add"), ("-", "__sub") ])
       , (LeftAssoc,  [ ("*", "__mul"), ("/", "__div") ]) ]
 
 allOps :: Operators -> [(Ident, Ident)]
 allOps ops = concat [ os | (_, os) <- ops ]
+
+pprintIdent :: Operators -> Ident -> String
+pprintIdent [] id = id
+pprintIdent ((_, level):ops) id = case find ((== id) . snd) level of
+  Just (op, _) -> "(" ++ op ++ ")"
+  Nothing -> pprintIdent ops id
 
 parseProgram = parseWrapper program
 parseExpr = parseWrapper expr
@@ -60,7 +69,7 @@ parseWrapper p f s = case runParser p 0 f s of
   Right a -> return a
 
 program :: Parser Program
-program = sepEndBy def (keyword ".")
+program = sepEndBy def (keyword ";")
 
 expr :: Parser Expr
 expr = mkOpParser term ops
