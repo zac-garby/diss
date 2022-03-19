@@ -3,6 +3,7 @@
 module Types ( GenericType (..)
              , Scheme (..)
              , TypeError (..)
+             , BindingLocality (..)
              , HoleIndex
              , Type
              , Env
@@ -66,7 +67,11 @@ instance Foldable GenericType where
   foldr _ s (TyHole _) = s
 
 type Type = GenericType Ident
-type Env = [(Ident, Scheme)]
+
+data BindingLocality = Local | Global
+  deriving (Show, Eq, Ord)
+
+type Env = [(Ident, (Scheme, BindingLocality))]
 
 data Scheme = Forall [Ident] Type
 
@@ -116,7 +121,7 @@ instance Sub Scheme where
   sub s (Forall vs t) = Forall vs (sub s t)
 
 instance Sub Env where
-  sub s e = [ (id, sub s sch) | (id, sch) <- e ]
+  sub s e = [ (id, (sub s sch, l)) | (id, (sch, l)) <- e ]
 
 instance Sub Constraint where
   sub s (t1, t2) = (sub s t1, sub s t2)
@@ -152,7 +157,7 @@ infer (Var x) = do
   env <- ask
   case lookup x env of
     Nothing -> throwError $ UnboundVariableError x
-    Just t -> instantiate t
+    Just (t, _) -> instantiate t
 
 infer (Hole i) = return $ TyHole i
 
@@ -217,7 +222,7 @@ instantiate (Forall vs t) = do
 generalise :: Type -> Infer Scheme
 generalise t = do
   env <- ask
-  let freeEnv = concat [ freeVars ty | (_, ty) <- env ]
+  let freeEnv = concat [ freeVars ty | (_, (ty, _)) <- env ]
   return $ Forall (freeVars t \\ freeEnv) t
 
 freshName :: Infer Ident
@@ -233,8 +238,8 @@ infixl 1 ~~
 (~~) :: Type -> Type -> Infer ()
 (~~) a b = tell [(a, b)]
 
-with :: MonadReader [(Ident, Scheme)] m => (Ident, Scheme) -> m a -> m a
-with p = local (p :)
+with :: MonadReader Env m => (Ident, Scheme) -> m a -> m a
+with (i, sch) = local ((i, (sch, Local)) :)
 
 type Unify = StateT Subst (Except TypeError)
 
@@ -324,14 +329,14 @@ data BoundHole = BoundHole HoleIndex Type Env
 
 instance Show BoundHole where
   show (BoundHole i ty env)
-    | null env' = "    ?" ++ show i ++ " : " ++ show ty
-                  ++ "\n      no relevant bindings"
+    | null relevant = "    ?" ++ show i ++ " : " ++ show ty
+                   ++ "\n      no relevant bindings"
     | otherwise = "    ?" ++ show i ++ " : " ++ show ty
-                  ++ "\n      relevant bindings include:\n"
-                  ++ intercalate "\n" [ "        " ++ pprintIdent ops id ++ " : " ++ show t
-                                      | (id, t) <- env' ]
+                   ++ "\n      relevant bindings include:\n"
+                   ++ intercalate "\n" [ "        " ++ pprintIdent ops id ++ " : " ++ show t
+                                      | (id, (t, l)) <- relevant ]
 
-    where env' = reverse $ takeWhile (\(id, _) -> head id /= '?') env
+    where relevant = [ (id, (t, l)) | (id, (t, l)) <- env, l == Local ]
 
 typeHoles :: Expr -> Type -> Infer (Type, [BoundHole])
 typeHoles expr t = do
@@ -347,7 +352,7 @@ typeAs (Var x) t = lift $ do
   env <- ask
   case lookup x env of
     Nothing -> throwError $ UnboundVariableError x
-    Just sch -> do
+    Just (sch, _) -> do
       t' <- instantiate sch
       t ~~ t'
   

@@ -111,7 +111,7 @@ insertKV k v ((k', v'):xs)
   | otherwise = (k', v') : insertKV k v xs
 
 fromEnvironment :: Environment -> Env
-fromEnvironment emt = [ (n, sch) | (n, (sch, _)) <- emt ]
+fromEnvironment emt = [ (n, (sch, Global)) | (n, (sch, _)) <- emt ]
 
 envTerms :: Environment -> [Term]
 envTerms emt = [ t | (_, (_, t)) <- emt ]
