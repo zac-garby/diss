@@ -13,11 +13,14 @@ import qualified Control.Monad.State.Lazy as S
 import Text.Parsec
 import Data.Char
 import Data.List
+import Data.Maybe
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Lazy
 -- import Control.Applicative hiding (many)
 import Debug.Trace
+
+import Types
 
 type Ident = String
 data Definition = Definition Ident Expr
@@ -34,6 +37,7 @@ data Expr = Var Ident
           | LitBool Bool
           | LitList [Expr]
           | LitChar Char
+          | TypeSpec Expr Type
           | Hole Int
           deriving (Show, Eq, Ord)
 
@@ -62,6 +66,7 @@ pprintIdent ((_, level):ops) id = case find ((== id) . snd) level of
 
 parseProgram = parseWrapper (only program)
 parseExpr = parseWrapper (only expr)
+parseType = parseWrapper (only typeExpr)
 
 only p = whitespace *> p <* whitespace <* eof
 
@@ -74,7 +79,17 @@ program :: Parser Program
 program = sepEndBy def (keyword ";")
 
 expr :: Parser Expr
-expr = mkOpParser term ops
+expr = choice [try typeSpec, op]
+
+typeSpec :: Parser Expr
+typeSpec = do
+  e <- op
+  colon
+  t <- typeExpr
+  return $ TypeSpec e t
+
+op :: Parser Expr
+op = mkOpParser term ops
 
 term :: Parser Expr
 term = choice [ try app, abstr, try letRecExpr, letExpr, ifExpr ]
@@ -163,6 +178,39 @@ litString = lexeme $ do
   char '"'
   return $ LitList (map LitChar s)
 
+typeExpr :: Parser Type
+typeExpr = choice [try funcType, atomType]
+
+funcType :: Parser Type
+funcType = do
+  l <- atomType
+  arrow
+  r <- typeExpr
+  return $ l --> r
+
+listType :: Parser Type
+listType = do
+  listStart
+  t <- typeExpr
+  listEnd
+  return $ tyList t
+
+atomType :: Parser Type
+atomType = choice [listType, try typeVar, try typeConstr, parens typeExpr]
+
+typeVar :: Parser Type
+typeVar = do
+  id <- ident
+  guard $ all isLower id
+  return $ TyVar id
+
+typeConstr :: Parser Type
+typeConstr = do
+  id <- ident
+  guard $ isUpper (head id)
+  args <- many (try atomType)
+  return $ TyConstr id args
+
 ident :: Parser Ident
 ident = try $ lexeme $ do
   id <- (:) <$> satisfy validFirstId <*> many (satisfy validIdent)
@@ -198,6 +246,9 @@ arrow = keyword "->" <|> keyword "→"
 equals = keyword "="
   <?> "equals"
 
+colon = keyword ":"
+  <?> "colon"
+
 listStart = keyword "["
 listEnd = keyword "]"
 
@@ -230,45 +281,13 @@ mkOpParser p ((assoc, ops):rest) = assocFn assoc next mkOp
         mkOp = choice [ try (keyword op) >> return (\l r -> App (App (Var to) l) r)
                       | (op, to) <- ops ]
 
-assocFn :: Associativity -> Parser a -> Parser (a -> a -> a) -> Parser a
-assocFn LeftAssoc = chainl1
-assocFn RightAssoc = chainr1
-
-{-
-instance Show Expr where
-  show (Var v) = v
-  show (App f x) = show f ++ " " ++ brack x
-  
-  show (Abs v t) = "λ" ++ intercalate " " vs ++ " → " ++ show t'
-    where (vs, t') = unfoldAbs (Abs v t)
-    
-  show (Let v val body) = "let " ++ v ++ " " ++ intercalate " " vs ++ " = "
-                          ++ show val' ++ " in " ++ show body
-    where (vs, val') = unfoldAbs val
-    
-  show (LetRec v val body) = "rec let " ++ v ++ " " ++ intercalate " " vs ++ " = "
-                             ++ show val' ++ " in " ++ show body
-    where (vs, val') = unfoldAbs val
-    
-  show (If cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
-  show (LitInt i) = show i
-  show (LitBool b) = show b
-  show (LitChar c) = show c
-  show (LitList xs) = "[" ++ intercalate ", " (map show xs) ++ "]"
-  show (Hole n) = "?" ++ show n
--}
+        assocFn LeftAssoc = chainl1
+        assocFn RightAssoc = chainr1
 
 unfoldAbs :: Expr -> ([Ident], Expr)
 unfoldAbs (Abs v t) = (v:vs, t')
   where (vs, t') = unfoldAbs t
 unfoldAbs t = ([], t)
-
-brack :: Expr -> String
-brack (Var v) = v
-brack (LitInt i) = show i
-brack (LitBool b) = show b
-brack (Hole n) = show (Hole n)
-brack e = "(" ++ show e ++ ")"
 
 foldExpr :: (a -> a -> a) -> (Expr -> a) -> a -> Expr -> a
 foldExpr c l a (App f x) = foldExpr c l a f `c` foldExpr c l a x 
@@ -277,4 +296,5 @@ foldExpr c l a (Let v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (LetRec v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (If cond t f) = foldExpr c l a f `c` foldExpr c l a t `c` foldExpr c l a cond
 foldExpr c l a (LitList xs) = foldr c a (map (foldExpr c l a) xs)
+foldExpr c l a (TypeSpec e _) = foldExpr c l a e
 foldExpr c l a t = l t

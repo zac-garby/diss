@@ -51,8 +51,6 @@ infer (Var x) = do
     Nothing -> throwError $ UnboundVariableError x
     Just (t, _) -> instantiate t
 
-infer (Hole i) = return $ TyHole i
-
 infer (Abs x e) = do
   tv <- fresh
   te <- with (x, Forall [] tv) (infer e)
@@ -103,8 +101,15 @@ infer (LitList xs) = do
     t ~~ tx
   return $ tyList t
 
+infer (TypeSpec e t) = do
+  te <- infer e
+  te ~~ t
+  return t
+
+infer (Hole i) = return $ TyHole i
+
 runInfer :: Env -> Infer a -> Except TypeError (a, [Constraint])
-runInfer env i = evalRWST i env allVars
+runInfer env i = evalRWST i env tempVars
 
 instantiate :: Scheme -> Infer Type
 instantiate (Forall vs t) = do
@@ -125,6 +130,9 @@ freshName = do
 
 fresh :: Infer Type
 fresh = fmap TyVar freshName
+
+tempVars :: [Ident]
+tempVars = [ i ++ "'" | i <- allVars ]
 
 allVars :: [Ident]
 allVars = allVars' 0
@@ -237,8 +245,8 @@ instance Show BoundHole where
                    ++ intercalate "\n" [ "        " ++ pprintIdent ops id ++ " : " ++ show t
                                       | (id, (t, l)) <- relevant ]
 
-    where relevant = nubBy (\(i, _) (j, _) -> i == j)
-                           [ (id, (t, l)) | (id, (t, l)) <- env, l == Local ]
+    where relevant = reverse $ nubBy (\(i, _) (j, _) -> i == j)
+                     [ (id, (t, l)) | (id, (t, l)) <- env, l == Local ]
 
 typeHoles :: Expr -> Type -> Infer (Type, [BoundHole])
 typeHoles expr t = do
@@ -300,6 +308,10 @@ typeAs (If c true false) t = do
   typeAs c tyBool
   typeAs true t
   typeAs false t
+
+typeAs (TypeSpec e t) t' = do
+  lift $ t ~~ t'
+  typeAs e t'
 
 typeAs (Hole n) t = do
   env <- lift ask

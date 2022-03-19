@@ -116,6 +116,9 @@ fromExpr (LitChar c) = return $ CLitChar c
 fromExpr (LitList xs) = do
   xs' <- mapM fromExpr xs
   return $ foldr CLitCons CLitNil xs'
+
+fromExpr (TypeSpec e _) = fromExpr e
+
 fromExpr (Hole i) = throwError FoundHole
 
 with :: Ident -> Compiler a -> Compiler a
