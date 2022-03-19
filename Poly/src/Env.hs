@@ -2,6 +2,7 @@ module Env ( Environment
            , defaultEnv ) where
 
 import Types
+import Infer
 import Compiler
 
 type Environment = [(String, (Scheme, Term))]

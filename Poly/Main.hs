@@ -9,6 +9,7 @@ import Control.Monad.State.Strict
 
 import Parser
 import Types
+import Infer
 import Compiler
 import Eval
 import Env
