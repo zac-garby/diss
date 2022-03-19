@@ -65,7 +65,7 @@ browse :: Interactive ()
 browse = do
   env <- get
   forM_ env $ \(name, (sch, t)) ->
-    liftIO $ putStrLn $ "  " ++ name ++ " : " ++ show sch
+    liftIO $ putStrLn $ "  " ++ pprintIdent ops name ++ " : " ++ show sch
 
 help :: Interactive ()
 help = liftIO $ do
