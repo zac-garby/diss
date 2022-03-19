@@ -336,7 +336,8 @@ instance Show BoundHole where
                    ++ intercalate "\n" [ "        " ++ pprintIdent ops id ++ " : " ++ show t
                                       | (id, (t, l)) <- relevant ]
 
-    where relevant = [ (id, (t, l)) | (id, (t, l)) <- env, l == Local ]
+    where relevant = nubBy (\(i, _) (j, _) -> i == j)
+                           [ (id, (t, l)) | (id, (t, l)) <- env, l == Local ]
 
 typeHoles :: Expr -> Type -> Infer (Type, [BoundHole])
 typeHoles expr t = do
