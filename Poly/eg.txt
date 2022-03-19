@@ -75,4 +75,4 @@ zipWith f xs ys =
        then []
 	   else f (head xs) (head ys) :: zipWith f (tail xs) (tail ys);
 
-dot = ((.) . (.)) sum (zipWith (+));
+dot = ((.) . (.)) sum (zipWith (*));
