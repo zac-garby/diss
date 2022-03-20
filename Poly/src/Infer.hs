@@ -42,12 +42,19 @@ data TypeError = UnifyInfiniteError Ident Type
                | FoundHoles Scheme [BoundHole]
 
 instance Show TypeError where
-  show (UnifyInfiniteError v t) = "could not construct infinite type " ++ v ++ " ~ " ++ show t
-  show (UnifyConstructorsError c1 c2) = "could not unify different constructors " ++ c1 ++ " and " ++ c2
-  show (UnifyConstructorArityMismatch c a1 a2) = "constructor arity mismatch for " ++ c ++ ": " ++ show a1 ++ " vs " ++ show a2
-  show (UnboundVariableError v) = "unbound variable: " ++ v
-  show (FoundHoles sch hs) = "found holes in " ++ show sch ++ ":\n"
-                             ++ intercalate "\n" (map show hs)
+  show (UnifyInfiniteError v t)
+    = "could not construct infinite type " ++ v ++ " ~ " ++ show t
+  show (UnifyConstructorsError c1 "→") =
+    "a " ++ c1 ++ " cannot be used as a function"
+  show (UnifyConstructorsError c1 c2) =
+    "could not unify type " ++ c1 ++ " with " ++ c2
+  show (UnifyConstructorArityMismatch c a1 a2)
+    = "type constructor arity mismatch in " ++ c ++ ": " ++ show a1 ++ " vs " ++ show a2
+  show (UnboundVariableError v) =
+    "unbound variable: " ++ v
+  show (FoundHoles sch hs) =
+    "found holes in " ++ show sch ++ ":\n"
+    ++ intercalate "\n" (map show hs)
 
 type Infer = RWST
   Env                -- typing environment
