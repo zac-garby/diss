@@ -44,6 +44,7 @@ handleCommand "" = repl
 handleCommand (':':'l':rest) = loadFiles (words rest)
 handleCommand (':':'b':rest) = browse
 handleCommand (':':'t':rest) = checkType rest
+handleCommand (':':'s':rest) = search rest
 handleCommand (':':'h':rest) = help
 handleCommand s = handleInput s
 
@@ -75,12 +76,25 @@ checkType s = do
   sch <- typecheckTerm t
   liftIO $ putStrLn $ "  : " ++ show sch
 
+search :: String -> Interactive ()
+search s = do
+  ty <- parseType "<repl>" s ?? SyntaxErr
+  let sch = finalise ty
+  env <- get
+  matches <- filterM (\(name, (sch', _)) -> return $ sch <= sch') env
+
+  liftIO $ case matches of
+    [] -> putStrLn $ "  no matches found for " ++ show sch
+    matches -> forM_ matches $ \(name, (sch', t)) -> do
+      putStrLn $ "  " ++ pprintIdent ops name ++ " : " ++ show sch'
+
 help :: Interactive ()
 help = liftIO $ do
   putStrLn "  Usage"
   putStrLn "    :l  load file(s)"
   putStrLn "    :b  browse loaded globals"
   putStrLn "    :t  derive the type of a term without evaluating"
+  putStrLn "    :s  search the environment for a type (think Hoogle)"
   putStrLn "    :h  show this help message"
 
 typecheckTerm :: Expr -> Interactive Scheme
