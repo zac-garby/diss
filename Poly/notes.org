@@ -2,10 +2,8 @@
 ** Simultaneous equations in files
 ** Pattern matching
 ** User-defined data types
-** "Holes" and/or a message saying what type an undeclared variable name should have been
 ** Hoogle-like interface built-in
-** AST editing directly
-** =a : T= notation
+** AST editing directly/interactive hole filling
 ** User-defined infix operators?
 ** Tuples
 ** Modules/environment levels
