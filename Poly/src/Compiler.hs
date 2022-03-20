@@ -46,6 +46,7 @@ instance Show Term where
   show (CLitCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
   show (CBuiltin Full f) = "<builtin>"
   show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
+  show (CBuiltin None f) = "<builtin (no eval)>"
 
 outputShow :: Term -> Maybe String
 outputShow (CLitInt i) = Just $ show i
