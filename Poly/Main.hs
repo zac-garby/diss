@@ -81,7 +81,7 @@ search s = do
   ty <- parseType "<repl>" s ?? SyntaxErr
   let sch = finalise ty
   env <- get
-  matches <- filterM (\(name, (sch', _)) -> return $ sch <= sch') env
+  let matches = filter (\(name, (sch', _)) -> sch <= sch') env
 
   liftIO $ case matches of
     [] -> putStrLn $ "  no matches found for " ++ show sch
