@@ -318,10 +318,3 @@ typeAs (Hole n) t = do
   lift $ TyHole n ~~ t
   tell $ [BoundHole n t env]
 
-isComplete :: Expr -> Bool
-isComplete = null . holesIn
-
-holesIn :: Expr -> [HoleIndex]
-holesIn = foldExpr (++) f []
-  where f (Hole i) = [i]
-        f _ = []

@@ -6,7 +6,9 @@ module Parser ( Expr (..)
               , parseExpr
               , parseProgram
               , pprintIdent
-              , foldExpr ) where
+              , foldExpr
+              , isComplete
+              , holesIn ) where
 
 import qualified Control.Monad.State.Lazy as S
 
@@ -298,3 +300,11 @@ foldExpr c l a (If cond t f) = foldExpr c l a f `c` foldExpr c l a t `c` foldExp
 foldExpr c l a (LitList xs) = foldr c a (map (foldExpr c l a) xs)
 foldExpr c l a (TypeSpec e _) = foldExpr c l a e
 foldExpr c l a t = l t
+
+isComplete :: Expr -> Bool
+isComplete = null . holesIn
+
+holesIn :: Expr -> [HoleIndex]
+holesIn = foldExpr (++) f []
+  where f (Hole i) = [i]
+        f _ = []

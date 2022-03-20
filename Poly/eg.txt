@@ -46,6 +46,8 @@ drop n xs =
 
 seq n = n :: seq (n + 1);
 
+repeat a = a :: repeat a;
+
 range m n =
   if m == n
   then [m]
