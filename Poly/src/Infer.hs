@@ -23,6 +23,18 @@ type Constraint = (Type, Type)
 instance Sub Constraint where
   sub s (t1, t2) = (sub s t1, sub s t2)
 
+instance Ord Scheme where
+  Forall vs1 t1 <= Forall vs2 t2 = sub (subst t1 t2) t1 == t2
+    where subst (TyVar a) t2
+            | a `elem` vs1 = [(a, t2)]
+          subst (TyConstr c1 ts1) (TyConstr c2 ts2)
+            | c1 == c2 = concat [ subst t1 t2 | (t1, t2) <- zip ts1 ts2 ]
+          subst h@(TyHole i) t2 = [(show h, t2)]
+          subst _ _ = []
+
+instance Ord Type where
+  t1 <= t2 = Forall [] t1 <= Forall [] t2
+
 data TypeError = UnifyInfiniteError Ident Type
                | UnifyConstructorsError Ident Ident
                | UnifyConstructorArityMismatch Ident Int Int

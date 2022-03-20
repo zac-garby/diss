@@ -5,6 +5,7 @@ module Parser ( Expr (..)
               , ops
               , parseExpr
               , parseProgram
+              , parseType
               , pprintIdent
               , foldExpr
               , isComplete
@@ -41,7 +42,7 @@ data Expr = Var Ident
           | LitChar Char
           | TypeSpec Expr Type
           | Hole Int
-          deriving (Show, Eq, Ord)
+          deriving (Show, Eq)
 
 type Parser = Parsec String Int
 

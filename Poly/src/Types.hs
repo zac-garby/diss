@@ -25,11 +25,12 @@ type Ident = String
 data GenericType a = TyVar a
                    | TyConstr Ident [GenericType a]
                    | TyHole HoleIndex
-                   deriving (Eq, Ord, Traversable)
+                   deriving (Eq, Traversable)
 
 type Type = GenericType Ident
 
 data Scheme = Forall [Ident] Type
+  deriving Eq
 
 tyInt :: Type
 tyInt = TyConstr "Int" []
