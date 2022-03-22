@@ -2,7 +2,6 @@
 ** Simultaneous equations in files
 ** Pattern matching
 ** User-defined data types
-** Hoogle-like interface built-in
 ** AST editing directly/interactive hole filling
 ** User-defined infix operators?
 ** Tuples
