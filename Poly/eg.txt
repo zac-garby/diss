@@ -77,6 +77,10 @@ zipWith f xs ys =
        then []
 	   else f (head xs) (head ys) :: zipWith f (tail xs) (tail ys);
 
+zip = zipWith (\x y -> (x, y));
+
+enumerate = zip (seq 0);
+
 dot = ((.) . (.)) sum (zipWith (*));
 
 filter p xs =
