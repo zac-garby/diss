@@ -14,16 +14,16 @@ eval t = case evalStep t of
   Nothing -> t
 
 subEnv :: [Term] -> Term -> Term
-subEnv vs = foldr (.) id ((-->) <$> ZipList [0..] <*> ZipList vs)
+subEnv vs = foldr (.) id (zipWith (-->) [0..] vs)
 
 evalStep :: Term -> Maybe Term
-evalStep t = asum $ map ($t) [ evalAppAbs
-                             , evalApp1
-                             , evalApp2
-                             , evalIf
-                             , evalFix
-                             , evalHead
-                             , evalTail ]
+evalStep t = evalAppAbs t
+         <|> evalApp1 t
+         <|> evalApp2 t
+         <|> evalIf t
+         <|> evalFix t
+         <|> evalHead t
+         <|> evalTail t
 
 evalApp1 :: Term -> Maybe Term
 evalApp1 (CApp t1 t2) = do
@@ -72,7 +72,19 @@ isProper WHNF = isWHNF
 isProper None = const True
 
 isValue :: Term -> Bool
-isValue = isNothing . evalStep
+isValue (CVar _) = True
+isValue (CAbs _) = True
+isValue (CApp (CAbs _) _) = False
+isValue (CApp (CBuiltin _ _) _) = False
+isValue (CApp a b) = isValue a && isValue b
+isValue (CFix t) = False
+isValue (CIf _ _ _) = False
+isValue (CLitInt _) = True
+isValue (CLitBool _) = True
+isValue (CLitChar _) = True
+isValue CLitNil = True
+isValue (CLitCons a b) = isValue a && isValue b
+isValue (CBuiltin _ _) = True
 
 isWHNF :: Term -> Bool
 isWHNF (CLitCons h _) = isValue h
