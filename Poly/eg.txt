@@ -87,3 +87,12 @@ filter p xs =
 	   if p hd
 	   then hd :: filter p tl
 	   else filter p tl;
+
+sort xs =
+  if null xs
+  then []
+  else let hd = head xs in
+  	   let tl = tail xs in
+	   let left = filter (\x -> x <= hd) tl in
+	   let right = filter (\x -> x > hd) tl in
+	   sort left ++ [hd] ++ sort right;
