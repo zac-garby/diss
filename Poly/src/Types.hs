@@ -86,10 +86,13 @@ class Vars a where
   freeVars :: a -> [Ident]
 
 instance Vars Type where
-  freeVars = foldr (:) []
+  freeVars = nub . foldr (:) []
 
 instance Vars Scheme where
   freeVars (Forall vs t) = nub (freeVars t) \\ vs
+
+instance Vars Env where
+  freeVars env = nub (concat [ freeVars sch | (_, (sch, _)) <- env ])
 
 type Subst = [(Ident, Type)]
 
@@ -102,7 +105,8 @@ instance Sub Type where
   sub s t@(TyHole i) = fromMaybe t (lookup (show t) s)
 
 instance Sub Scheme where
-  sub s (Forall vs t) = Forall vs (sub s t)
+  sub s (Forall vs t) = Forall vs (sub s' t)
+    where s' = [ (i, t) | (i, t) <- s, not (i `elem` vs) ]
 
 instance Sub Env where
   sub s e = [ (id, (sub s sch, l)) | (id, (sch, l)) <- e ]

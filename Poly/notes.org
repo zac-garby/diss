@@ -7,3 +7,9 @@
 ** User-defined infix operators?
 ** Tuples
 ** Modules/environment levels
+** Lazy evaluation
+* Bug!
+  #+begin_src
+\xs -> let hd = head xs in hd
+  #+end_src
+  Fixed - needed to =sub s= to the env when generalising the type for a let expression.

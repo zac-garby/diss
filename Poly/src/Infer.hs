@@ -88,7 +88,7 @@ infer (App f x) = do
 infer (Let x e b) = do
   (te, cs) <- listen $ infer e
   s <- lift $ runUnify (solve cs)
-  sch <- generalise (sub s te) -- fixed bug: let two = (\n -> add n 1) 1 in two
+  sch <- local (sub s) (generalise (sub s te)) -- fixed bug: let two = (\n -> add n 1) 1 in two
   with (x, sch) (infer b)
 
 infer (LetRec x e b) = do
@@ -132,14 +132,13 @@ runInfer env i = evalRWST i env tempVars
 
 instantiate :: Scheme -> Infer Type
 instantiate (Forall vs t) = do
-  vs' <- zip vs <$> mapM (const freshName) vs
-  return $ fmap (\v -> fromMaybe v (lookup v vs')) t
+  s <- zip vs <$> mapM (const fresh) vs
+  return $ sub s t
 
 generalise :: Type -> Infer Scheme
 generalise t = do
   env <- ask
-  let freeEnv = concat [ freeVars ty | (_, (ty, _)) <- env ]
-  return $ Forall (freeVars t \\ freeEnv) t
+  return $ Forall (freeVars t \\ freeVars env) t
 
 freshName :: Infer Ident
 freshName = do

@@ -78,3 +78,12 @@ zipWith f xs ys =
 	   else f (head xs) (head ys) :: zipWith f (tail xs) (tail ys);
 
 dot = ((.) . (.)) sum (zipWith (*));
+
+filter p xs =
+  if null xs
+  then []
+  else let hd = head xs in
+  	   let tl = tail xs in
+	   if p hd
+	   then hd :: filter p tl
+	   else filter p tl;
