@@ -24,6 +24,7 @@ evalStep t = evalAppAbs t
          <|> evalFix t
          <|> evalHead t
          <|> evalTail t
+         <|> evalTuple t
 
 evalApp1 :: Term -> Maybe Term
 evalApp1 (CApp t1 t2) = do
@@ -66,6 +67,15 @@ evalTail (CLitCons h t) = do
   return $ CLitCons h t'
 evalTail _ = Nothing
 
+evalTuple :: Term -> Maybe Term
+evalTuple (CLitTuple (x:xs)) = case evalStep x of
+  Just x' -> return $ CLitTuple (x' : xs)
+  Nothing -> do
+    rest <- evalTuple (CLitTuple xs)
+    let (CLitTuple xs') = rest
+    return $ CLitTuple (x : xs')
+evalTuple _ = Nothing
+
 isProper :: EvalType -> Term -> Bool
 isProper Full = isValue
 isProper WHNF = isWHNF
@@ -84,6 +94,7 @@ isValue (CLitBool _) = True
 isValue (CLitChar _) = True
 isValue CLitNil = True
 isValue (CLitCons a b) = isValue a && isValue b
+isValue (CLitTuple xs) = all isValue xs
 isValue (CBuiltin _ _) = True
 
 isWHNF :: Term -> Bool
@@ -105,6 +116,7 @@ shift' d c (CLitBool b) = CLitBool b
 shift' d c (CLitChar ch) = CLitChar ch
 shift' d c (CLitNil) = CLitNil
 shift' d c (CLitCons a b) = CLitCons (shift' d c a) (shift' d c b)
+shift' d c (CLitTuple xs) = CLitTuple (map (shift' d c) xs)
 shift' d c (CBuiltin t f) = CBuiltin t f
 
 (-->) :: Int -> Term -> Term -> Term
@@ -119,4 +131,5 @@ shift' d c (CBuiltin t f) = CBuiltin t f
 (j --> s) (CLitChar c) = CLitChar c
 (j --> s) (CLitNil) = CLitNil
 (j --> s) (CLitCons a b) = CLitCons ((j --> s) a) ((j --> s) b)
+(j --> s) (CLitTuple xs) = CLitTuple (map (j --> s) xs)
 (j --> s) (CBuiltin t f) = CBuiltin t f

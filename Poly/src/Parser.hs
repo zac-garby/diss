@@ -39,6 +39,7 @@ data Expr = Var Ident
           | LitInt Int
           | LitBool Bool
           | LitList [Expr]
+          | LitTuple [Expr]
           | LitChar Char
           | TypeSpec Expr Type
           | Hole Int
@@ -139,7 +140,7 @@ ifExpr = do
   return $ If cond positive negative
 
 atom :: Parser Expr
-atom = choice [ var, hole, try section, bracket, list, litInt, litBool, litChar, litString ]
+atom = choice [ var, hole, try section, try bracket, list, tuple, litInt, litBool, litChar, litString ]
   <?> "atomic expression"
 
 var :: Parser Expr
@@ -162,6 +163,10 @@ bracket = parens expr
 list :: Parser Expr
 list = between listStart listEnd $ do
   LitList <$> sepBy expr (keyword ",")
+
+tuple :: Parser Expr
+tuple = parens $ do
+  LitTuple <$> sepEndBy expr (keyword ",")
 
 litInt :: Parser Expr
 litInt = lexeme $ LitInt <$> int
@@ -200,8 +205,11 @@ listType = do
   listEnd
   return $ tyList t
 
+tupleType :: Parser Type
+tupleType = parens $ tyTuple <$> sepEndBy typeExpr (keyword ",")
+
 atomType :: Parser Type
-atomType = choice [listType, try typeVar, try typeConstr, parens typeExpr]
+atomType = choice [listType, try typeVar, try typeConstr, try (parens typeExpr), tupleType]
 
 typeVar :: Parser Type
 typeVar = do
@@ -257,8 +265,11 @@ colon = keyword ":"
 listStart = keyword "["
 listEnd = keyword "]"
 
+lparen = keyword "("
+rparen = keyword ")"
+
 parens :: Parser a -> Parser a
-parens = between (lexeme $ char '(') (lexeme $ char ')')
+parens = between lparen rparen
 
 keyword :: String -> Parser String
 keyword = try . lexeme . string
@@ -301,6 +312,7 @@ foldExpr c l a (Let v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (LetRec v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (If cond t f) = foldExpr c l a f `c` foldExpr c l a t `c` foldExpr c l a cond
 foldExpr c l a (LitList xs) = foldr c a (map (foldExpr c l a) xs)
+foldExpr c l a (LitTuple xs) = foldr c a (map (foldExpr c l a) xs)
 foldExpr c l a (TypeSpec e _) = foldExpr c l a e
 foldExpr c l a t = l t
 

@@ -13,6 +13,7 @@ module Types ( GenericType (..)
              , tyBool
              , tyChar
              , tyList
+             , tyTuple
              , tyString
              , (-->) )where
 
@@ -44,6 +45,9 @@ tyChar = TyConstr "Char" []
 tyList :: Type -> Type
 tyList t = TyConstr "List" [t]
 
+tyTuple :: [Type] -> Type
+tyTuple = TyConstr "Tuple"
+
 tyString :: Type
 tyString = tyList tyChar
 
@@ -65,6 +69,7 @@ instance Show (GenericType String) where
   show (TyVar v) = v
   show (TyConstr "→" [l,r]) = bracketType l ++ " → " ++ show r
   show (TyConstr "List" [t]) = "[" ++ show t ++ "]"
+  show (TyConstr "Tuple" xs) = "(" ++ intercalate ", " (map show xs) ++ ")"
   show (TyConstr c []) = c
   show (TyConstr c ts) = c ++ " " ++ intercalate " " (map bracketType ts)
   show (TyHole i) = "¿" ++ show i ++ "?"

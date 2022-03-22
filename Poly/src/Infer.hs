@@ -120,6 +120,10 @@ infer (LitList xs) = do
     t ~~ tx
   return $ tyList t
 
+infer (LitTuple xs) = do
+  ts <- forM xs infer
+  return $ tyTuple ts
+
 infer (TypeSpec e t) = do
   te <- infer e
   te ~~ t

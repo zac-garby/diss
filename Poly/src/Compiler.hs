@@ -31,6 +31,7 @@ data Term = CVar Index
           | CLitChar Char
           | CLitNil
           | CLitCons Term Term
+          | CLitTuple [Term]
           | CBuiltin EvalType (Term -> Term)
 
 instance Show Term where
@@ -44,6 +45,7 @@ instance Show Term where
   show (CLitChar c) = show c
   show (CLitNil) = "[]"
   show (CLitCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
+  show (CLitTuple xs) = "(" ++ intercalate ", " (map show xs) ++ ")"
   show (CBuiltin Full f) = "<builtin>"
   show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
   show (CBuiltin None f) = "<builtin (no eval)>"
@@ -60,6 +62,9 @@ outputShow c@(CLitCons h t) = do
   ts <- clist2list c
   strings <- mapM outputShow ts
   return $ "[" ++ intercalate ", " strings ++ "]"
+outputShow (CLitTuple xs) = do
+  xs' <- mapM outputShow xs
+  return $ "(" ++ intercalate ", " xs' ++ ")"
 outputShow _ = Nothing
 
 bracket :: String -> String
@@ -114,9 +119,14 @@ fromExpr (If cond t f) = do
 fromExpr (LitInt n) = return $ CLitInt n
 fromExpr (LitBool b) = return $ CLitBool b
 fromExpr (LitChar c) = return $ CLitChar c
+
 fromExpr (LitList xs) = do
   xs' <- mapM fromExpr xs
   return $ foldr CLitCons CLitNil xs'
+
+fromExpr (LitTuple xs) = do
+  xs' <- mapM fromExpr xs
+  return $ CLitTuple xs'
 
 fromExpr (TypeSpec e _) = fromExpr e
 
@@ -160,3 +170,13 @@ instance Value a => Value [a] where
 instance (Value a, Value b) => Value (a -> b) where
   toTerm f = CBuiltin Full $ \t -> toTerm (f (fromTerm t))
   fromTerm (CBuiltin _ f) = \a -> fromTerm (f (toTerm a))
+
+instance Value () where
+  toTerm () = CLitTuple []
+  fromTerm _ = ()
+
+instance (Value a, Value b) => Value (a, b) where
+  toTerm (a, b) = CLitTuple [toTerm a, toTerm b]
+  fromTerm (CLitTuple [a, b]) = (fromTerm a, fromTerm b)
+
+-- ...
