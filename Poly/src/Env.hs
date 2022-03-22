@@ -15,8 +15,11 @@ defaultEnv = [ ("__add", intBinOp (+))
              , ("__sub", intBinOp (-))
              , ("__mul", intBinOp (*))
              , ("__div", intBinOp div)
-             , ("__eq", ( finalise $ tyInt --> tyInt --> tyBool
-                      , toTerm ((==) :: Int -> Int -> Bool) ))
+             , ("__eq", intCompOp (==))
+             , ("__lt", intCompOp (<))
+             , ("__gt", intCompOp (>))
+             , ("__lte", intCompOp (<=))
+             , ("__gte", intCompOp (>=))
              , ("head", ( finalise $ tyList a --> a
                         , CBuiltin WHNF headFn ))
              , ("tail", ( finalise $ tyList a --> tyList a
@@ -29,7 +32,11 @@ defaultEnv = [ ("__add", intBinOp (+))
 
 intBinOp :: (Int -> Int -> Int) -> (Scheme, Term)
 intBinOp f = ( finalise $ tyInt --> tyInt --> tyInt
-             , toTerm f)
+             , toTerm f )
+
+intCompOp :: (Int -> Int -> Bool) -> (Scheme, Term)
+intCompOp f = ( finalise $ tyInt --> tyInt --> tyBool
+              , toTerm f )
 
 intFn :: (Int -> Term) -> Term
 intFn f = CBuiltin Full $ \(CLitInt n) -> f n

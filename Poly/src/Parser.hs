@@ -51,8 +51,10 @@ data Associativity = LeftAssoc | RightAssoc
 
 type Operators = [(Associativity, [(Ident, Ident)])]
 
+-- the operators, listed from lowest to highest precedence
 ops :: Operators
 ops = [ (LeftAssoc,  [ ("==", "__eq") ])
+      , (LeftAssoc,  [ ("<=", "__lte"), (">=", "__gte"), ("<", "__lt"), (">", "__gt") ])
       , (RightAssoc, [ ("::", "__cons") ])
       , (RightAssoc, [ (".", "__comp") ])
       , (LeftAssoc,  [ ("++", "__app"), ("+", "__add"), ("-", "__sub") ])
