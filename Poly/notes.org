@@ -6,6 +6,9 @@
 ** User-defined infix operators?
 ** Modules/environment levels
 ** Lazy evaluation
+** Better searching
+*** e.g. =:s a -> b :from prelude.txt= - could search for specific files
+*** e.g. =:s zip= - could also search for function names
 * Bug!
   #+begin_src
 \xs -> let hd = head xs in hd
