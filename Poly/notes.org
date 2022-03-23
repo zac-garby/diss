@@ -4,7 +4,6 @@
 ** User-defined data types
 ** AST editing directly/interactive hole filling
 ** User-defined infix operators?
-** Tuples
 ** Modules/environment levels
 ** Lazy evaluation
 * Bug!
