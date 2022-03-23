@@ -1,5 +1,7 @@
 __comp f g x = f (g x);
 
+__apply f x = f x;
+
 id x = x;
 
 swap f x y = f y x;
@@ -39,6 +41,8 @@ drop n xs =
 seq n = n :: seq (n + 1);
 
 repeat a = a :: repeat a;
+
+replicate xs = xs ++ replicate xs;
 
 range m n =
   if m == n

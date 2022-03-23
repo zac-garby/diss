@@ -54,7 +54,8 @@ type Operators = [(Associativity, [(Ident, Ident)])]
 
 -- the operators, listed from lowest to highest precedence
 ops :: Operators
-ops = [ (LeftAssoc,  [ ("==", "__eq") ])
+ops = [ (LeftAssoc,  [ ("$", "__apply") ])
+      , (LeftAssoc,  [ ("==", "__eq") ])
       , (LeftAssoc,  [ ("<=", "__lte"), (">=", "__gte"), ("<", "__lt"), (">", "__gt") ])
       , (RightAssoc, [ ("::", "__cons") ])
       , (RightAssoc, [ (".", "__comp") ])
