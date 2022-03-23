@@ -234,7 +234,10 @@ idents :: Parser [Ident]
 idents = sepEndBy1 ident whitespace
 
 int :: Parser Int
-int = lexeme $ read <$> many1 (satisfy isDigit)
+int = try $ do
+  m <- option "" (string "-")
+  n <- many1 (satisfy isDigit)
+  return $ read (m ++ n)
 
 whitespace :: Parser ()
 whitespace = void $ many $ oneOf " \n\t"

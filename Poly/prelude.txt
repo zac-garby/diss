@@ -8,6 +8,8 @@ const x y = x;
 
 not b = if b then False else True;
 
+neg x = x * -1;
+
 fix f = f (fix f);
 
 append xs ys =
