@@ -298,6 +298,14 @@ typeAs (LitList xs) t = do
   forM_ xs $ \x -> do
     typeAs x tv
 
+typeAs (LitTuple xs) t = do
+  ts <- forM xs $ \x -> do
+    tv <- lift fresh
+    typeAs x tv
+    return tv
+    
+  lift $ tyTuple ts ~~ t
+
 typeAs (App f x) t = do
   tx <- lift fresh
   typeAs f (tx --> t)
