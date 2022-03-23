@@ -1,6 +1,7 @@
 module Main where
 
 import System.IO
+import System.Directory
 import Data.List
 import Text.Parsec (ParseError)
 import Control.Monad
@@ -19,11 +20,13 @@ type Interactive = ExceptT Error (StateT Environment IO)
 data Error = TypeErr TypeError
            | SyntaxErr ParseError
            | CompileErr CompilerError
+           | FileErr FilePath
 
 instance Show Error where
   show (TypeErr te) = show te
   show (SyntaxErr fp) = show fp
   show (CompileErr ce) = show ce
+  show (FileErr fp) = "file '" ++ fp ++ "' does not exist"
 
 main :: IO ()
 main = void $ evalStateT (runExceptT repl) defaultEnv
@@ -61,7 +64,13 @@ handleInput s = do
 
 loadFiles :: [String] -> Interactive ()
 loadFiles fs = do
-  forM_ fs loadFile
+  forM_ fs $ \f -> do
+    exist <- liftIO $ doesFileExist f
+    if exist then
+      loadFile f
+    else
+      throwError f ?? FileErr
+
   liftIO $ putStrLn $ "  loaded " ++ show (length fs) ++ " file(s)"
 
 browse :: Interactive ()
