@@ -42,9 +42,9 @@ repl = forever $ do
 handleCommand :: String -> Interactive ()
 handleCommand "" = repl
 handleCommand (':':'l':rest) = loadFiles (words rest)
-handleCommand (':':'b':rest) = browse
+handleCommand (':':'b':[])   = browse
+handleCommand (':':'b':rest) = search rest
 handleCommand (':':'t':rest) = checkType rest
-handleCommand (':':'s':rest) = search rest
 handleCommand (':':'h':rest) = help
 handleCommand s = handleInput s
 
@@ -70,12 +70,6 @@ browse = do
   forM_ env $ \(name, (sch, t)) ->
     liftIO $ putStrLn $ "  " ++ pprintIdent ops name ++ " : " ++ show sch
 
-checkType :: String -> Interactive ()
-checkType s = do
-  t <- parseExpr "<repl>" s ?? SyntaxErr
-  sch <- typecheckTerm t
-  liftIO $ putStrLn $ "  : " ++ show sch
-
 search :: String -> Interactive ()
 search s = do
   ty <- parseType "<repl>" s ?? SyntaxErr
@@ -88,14 +82,20 @@ search s = do
     matches -> forM_ matches $ \(name, (sch', t)) -> do
       putStrLn $ "  " ++ pprintIdent ops name ++ " : " ++ show sch'
 
+checkType :: String -> Interactive ()
+checkType s = do
+  t <- parseExpr "<repl>" s ?? SyntaxErr
+  sch <- typecheckTerm t
+  liftIO $ putStrLn $ "  : " ++ show sch
+
 help :: Interactive ()
 help = liftIO $ do
   putStrLn "  Usage"
-  putStrLn "    :l  load file(s)"
-  putStrLn "    :b  browse loaded globals"
-  putStrLn "    :t  derive the type of a term without evaluating"
-  putStrLn "    :s  search the environment for a type (think Hoogle)"
-  putStrLn "    :h  show this help message"
+  putStrLn "    :l <file1> <file2> ...  load file(s)"
+  putStrLn "    :b                      browse entire environment"
+  putStrLn "    :b <type>               search the environment"
+  putStrLn "    :t                      derive the type of a term"
+  putStrLn "    :h                      show this help message"
 
 typecheckTerm :: Expr -> Interactive Scheme
 typecheckTerm t = do
