@@ -59,6 +59,11 @@ foldr f z xs =
   then z
   else f (head xs) (foldr f z (tail xs));
 
+foldl f z xs =
+  if null xs
+  then z
+  else foldl f (f z (head xs)) (tail xs);
+
 sum = foldr (+) 0;
 
 length xs =

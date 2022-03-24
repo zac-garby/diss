@@ -9,72 +9,45 @@ import Debug.Trace
 import Compiler
 
 eval :: Term -> Term
-eval t = case evalStep t of
-  Just t' -> eval t'
+eval t = eval' $! t
+
+eval' :: Term -> Term
+eval' t = case evalStep $! t of
+  Just t' -> eval' $! t'
   Nothing -> t
 
 subEnv :: [Term] -> Term -> Term
 subEnv vs = foldr (.) id (zipWith (-->) [0..] vs)
 
 evalStep :: Term -> Maybe Term
-evalStep t = evalAppAbs t
-         <|> evalApp1 t
-         <|> evalApp2 t
-         <|> evalIf t
-         <|> evalFix t
-         <|> evalHead t
-         <|> evalTail t
-         <|> evalTuple t
-
-evalApp1 :: Term -> Maybe Term
-evalApp1 (CApp t1 t2) = do
-  t1' <- evalStep t1
-  return $ CApp t1' t2
-evalApp1 _ = Nothing
-
-evalApp2 :: Term -> Maybe Term
-evalApp2 (CApp t1 t2) = do
-  t2' <- evalStep t2
-  return $ CApp t1 t2'
-evalApp2 _ = Nothing
-
-evalAppAbs :: Term -> Maybe Term
-evalAppAbs (CApp (CAbs t12) v2) = return $ shift (-1) ((0 --> shift 1 v2) t12)
-evalAppAbs (CApp (CBuiltin t f) v) | isProper t v = return $ f v
-evalAppAbs _ = Nothing
-
-evalFix :: Term -> Maybe Term
-evalFix (CFix t) = return $ CApp t (CFix t)
-evalFix _ = Nothing
-
-evalIf :: Term -> Maybe Term
-evalIf (CIf (CLitBool True) t _) = return t
-evalIf (CIf (CLitBool False) _ f) = return f
-evalIf (CIf cond t f) = do
-  cond' <- evalStep cond
-  return $ CIf cond' t f
-evalIf _ = Nothing
-
-evalHead :: Term -> Maybe Term
-evalHead (CLitCons h t) = do
-  h' <- evalStep h
-  return $ CLitCons h' t
-evalHead _ = Nothing
-
-evalTail :: Term -> Maybe Term
-evalTail (CLitCons h t) = do
-  t' <- evalStep t
-  return $ CLitCons h t'
-evalTail _ = Nothing
-
-evalTuple :: Term -> Maybe Term
-evalTuple (CLitTuple (x:xs)) = case evalStep x of
-  Just x' -> return $ CLitTuple (x' : xs)
+evalStep (CApp (CAbs t12) v2) | isValue v2 = return $! shift (-1) ((0 --> shift 1 v2) t12)
+evalStep (CApp (CBuiltin t f) v) | isProper t v = return $! f v
+evalStep (CApp t1 t2) = case evalStep $! t1 of
+  Just t1' -> return $! CApp t1' t2
   Nothing -> do
-    rest <- evalTuple (CLitTuple xs)
+    t2' <- evalStep $! t2
+    return $ CApp t1 t2'
+evalStep f@(CFix (CAbs t)) = return $ (0 --> f) t
+evalStep (CFix t) = do
+  t' <- evalStep t
+  return $! CFix t'
+evalStep (CIf (CLitBool True) t _) = return $! t
+evalStep (CIf (CLitBool False) _ f) = return $! f
+evalStep (CIf cond t f) = do
+  cond' <- evalStep $! cond
+  return $ CIf cond' t f
+evalStep (CLitCons h t) = case evalStep $! h of
+  Just h' -> return $! CLitCons h' t
+  Nothing -> do
+    t' <- evalStep $! t
+    return $ CLitCons h t'
+evalStep (CLitTuple (x:xs)) = case evalStep $! x of
+  Just x' -> return $! CLitTuple (x' : xs)
+  Nothing -> do
+    rest <- evalStep $! CLitTuple xs
     let (CLitTuple xs') = rest
     return $ CLitTuple (x : xs')
-evalTuple _ = Nothing
+evalStep _ = Nothing
 
 isProper :: EvalType -> Term -> Bool
 isProper Full = isValue
@@ -122,9 +95,9 @@ shift' d c (CBuiltin t f) = CBuiltin t f
 (-->) :: Int -> Term -> Term -> Term
 (j --> s) (CVar n) | j == n = s
                    | otherwise = CVar n
-(j --> s) (CAbs t) = CAbs $ ((j+1) --> (shift 1 s)) t
-(j --> s) (CApp f x) = CApp ((j --> s) f) ((j --> s) x)
-(j --> s) (CFix t) = CFix ((j --> s) t)
+(j --> s) (CAbs t) = CAbs $! ((j+1) --> (shift 1 s)) t
+(j --> s) (CApp f x) = (CApp $! (j --> s) f) $! ((j --> s) x)
+(j --> s) (CFix t) = CFix $! (j --> s) t
 (j --> s) (CIf cond t f) = CIf ((j --> s) cond) ((j --> s) t) ((j --> s) f)
 (j --> s) (CLitInt i) = CLitInt i
 (j --> s) (CLitBool b) = CLitBool b
