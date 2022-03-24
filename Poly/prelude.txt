@@ -21,6 +21,11 @@ append xs ys =
 
 __app = append;
 
+__index xs i =
+  if i == 0
+  then head xs
+  else tail xs ! (i - 1);
+
 reverse xs =
   let rec rev-aux xs acc =
     if null xs
@@ -58,6 +63,11 @@ foldr f z xs =
   if null xs
   then z
   else f (head xs) (foldr f z (tail xs));
+
+foldl f z xs =
+  if null xs
+  then z
+  else foldl f (f z (head xs)) (tail xs);
 
 sum = foldr (+) 0;
 

@@ -9,8 +9,8 @@ import Debug.Trace
 import Compiler
 
 eval :: Term -> Term
-eval t = case evalStep t of
-  Just t' -> eval t'
+eval t = case evalStep $! t of
+  Just t' -> eval $! t'
   Nothing -> t
 
 subEnv :: [Term] -> Term -> Term
@@ -20,11 +20,16 @@ evalStep :: Term -> Maybe Term
 evalStep t = evalAppAbs t
          <|> evalApp1 t
          <|> evalApp2 t
-         <|> evalIf t
          <|> evalFix t
+         <|> evalIf t
          <|> evalHead t
          <|> evalTail t
          <|> evalTuple t
+
+evalAppAbs :: Term -> Maybe Term
+evalAppAbs (CApp (CAbs t12) v2) | isValue v2 = return $ shift (-1) ((0 --> shift 1 v2) t12)
+evalAppAbs (CApp (CBuiltin t f) v) | isProper t v = return $ f v
+evalAppAbs _ = Nothing
 
 evalApp1 :: Term -> Maybe Term
 evalApp1 (CApp t1 t2) = do
@@ -38,13 +43,11 @@ evalApp2 (CApp t1 t2) = do
   return $ CApp t1 t2'
 evalApp2 _ = Nothing
 
-evalAppAbs :: Term -> Maybe Term
-evalAppAbs (CApp (CAbs t12) v2) = return $ shift (-1) ((0 --> shift 1 v2) t12)
-evalAppAbs (CApp (CBuiltin t f) v) | isProper t v = return $ f v
-evalAppAbs _ = Nothing
-
 evalFix :: Term -> Maybe Term
-evalFix (CFix t) = return $ CApp t (CFix t)
+evalFix f@(CFix (CAbs t)) = return $ (0 --> f) t
+evalFix (CFix t) = do
+  t' <- evalStep t
+  return $! CFix t'
 evalFix _ = Nothing
 
 evalIf :: Term -> Maybe Term
@@ -122,9 +125,9 @@ shift' d c (CBuiltin t f) = CBuiltin t f
 (-->) :: Int -> Term -> Term -> Term
 (j --> s) (CVar n) | j == n = s
                    | otherwise = CVar n
-(j --> s) (CAbs t) = CAbs $ ((j+1) --> (shift 1 s)) t
-(j --> s) (CApp f x) = CApp ((j --> s) f) ((j --> s) x)
-(j --> s) (CFix t) = CFix ((j --> s) t)
+(j --> s) (CAbs t) = CAbs $! ((j+1) --> (shift 1 s)) t
+(j --> s) (CApp f x) = (CApp $! (j --> s) f) $! ((j --> s) x)
+(j --> s) (CFix t) = CFix $! (j --> s) t
 (j --> s) (CIf cond t f) = CIf ((j --> s) cond) ((j --> s) t) ((j --> s) f)
 (j --> s) (CLitInt i) = CLitInt i
 (j --> s) (CLitBool b) = CLitBool b

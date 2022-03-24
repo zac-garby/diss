@@ -3,6 +3,7 @@ module Main where
 import System.IO
 import System.Directory
 import Data.List
+import Data.Time.Clock
 import Text.Parsec (ParseError)
 import Control.Monad
 import Control.Monad.Except
@@ -44,6 +45,7 @@ repl = forever $ do
 
 handleCommand :: String -> Interactive ()
 handleCommand "" = repl
+handleCommand (':':'p':rest) = perf rest
 handleCommand (':':'l':rest) = loadFiles (words rest)
 handleCommand (':':'b':[])   = browse
 handleCommand (':':'b':rest) = search rest
@@ -61,6 +63,13 @@ handleInput s = do
   liftIO $ do
     printTerm $ eval (subEnv (envTerms env) term)
     putStrLn $ "  : " ++ show sch
+
+perf :: String -> Interactive ()
+perf s = do
+  start <- liftIO $ getCurrentTime
+  handleInput s
+  end <- liftIO $ getCurrentTime
+  liftIO $ putStrLn $ "  (finished in " ++ show (diffUTCTime end start) ++ ")"
 
 loadFiles :: [String] -> Interactive ()
 loadFiles fs = do
@@ -104,6 +113,7 @@ help = liftIO $ do
   putStrLn "    :b                      browse entire environment"
   putStrLn "    :b <type>               search the environment"
   putStrLn "    :t                      derive the type of a term"
+  putStrLn "    :p                      time an evaluation"
   putStrLn "    :h                      show this help message"
 
 typecheckTerm :: Expr -> Interactive Scheme
