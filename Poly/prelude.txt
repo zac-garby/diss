@@ -21,6 +21,11 @@ append xs ys =
 
 __app = append;
 
+__index xs i =
+  if i == 0
+  then head xs
+  else tail xs ! (i - 1);
+
 reverse xs =
   let rec rev-aux xs acc =
     if null xs

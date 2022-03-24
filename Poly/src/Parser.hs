@@ -57,6 +57,7 @@ ops :: Operators
 ops = [ (LeftAssoc,  [ ("$", "__apply") ])
       , (LeftAssoc,  [ ("==", "__eq") ])
       , (LeftAssoc,  [ ("<=", "__lte"), (">=", "__gte"), ("<", "__lt"), (">", "__gt") ])
+      , (LeftAssoc,  [ ("!", "__index") ])
       , (RightAssoc, [ ("::", "__cons") ])
       , (RightAssoc, [ (".", "__comp") ])
       , (LeftAssoc,  [ ("++", "__app"), ("+", "__add"), ("-", "__sub") ])
