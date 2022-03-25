@@ -101,6 +101,12 @@ zip : [a] -> [b] -> [(a, b)];
 zip = zipWith (\x y -> (x, y));
 
 enumerate : [a] -> [(Int, a)];
+enumerate xs =
+  let rec go xs n =
+    if null xs
+	then []
+	else (n, head xs) :: go (tail xs) (n + 1)
+  in go xs 0;
 
 filter : (a -> Bool) -> [a] -> [a];
 filter p xs =
