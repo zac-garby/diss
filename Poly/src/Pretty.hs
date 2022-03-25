@@ -44,7 +44,7 @@ prettyScheme (Forall [] t) = prettyType t
 prettyScheme (Forall vs t) = colour 90 ("∀ " ++ intercalate " " vs ++ " . ") ++ prettyType t
 
 prettyEnv :: Environment -> String
-prettyEnv env = intercalate "\n" [ "  " ++ leftPad longestName (colour 33 (pprintIdent ops name)) ++
+prettyEnv env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (pprintIdent ops name)) ++
                                    " : " ++ prettyScheme sch
                                  | (name, (sch, _)) <- env ]
   where longestName = maximum (map (length . fst) env)
