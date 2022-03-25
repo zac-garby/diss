@@ -84,9 +84,9 @@ instance Show TypeError where
   show (UnifyConstructorsError c1 c2) =
     "could not unify type : " ++ prettyType c1 ++ " with : " ++ prettyType c2
   show (TypeSpecMismatch te tr) =
-    "expression of type : " ++ show te ++ " does not match requested type : " ++ show tr
+    "expression of type : " ++ prettyScheme te ++ " does not match requested type : " ++ prettyScheme tr
   show (UnboundVariableError v) =
-    "unbound variable: " ++ v
+    "unbound variable: " ++ colour 33 v
   show (FoundHoles sch hs) =
     "found holes in " ++ prettyScheme sch ++ ":\n"
     ++ intercalate "\n" (map prettyHole hs)
