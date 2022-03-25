@@ -160,7 +160,7 @@ ifExpr = do
   return $ If cond positive negative
 
 atom :: Parser Expr
-atom = choice [ var, hole, try section, try bracket, list, tuple, litInt, litBool, litChar, litString ]
+atom = choice [ try var, hole, try bracket, list, tuple, litInt, litBool, litChar, litString ]
   <?> "atomic expression"
 
 var :: Parser Expr
@@ -172,10 +172,6 @@ hole = do
   h <- getState
   modifyState (+1)
   return $ Hole h
-
-section :: Parser Expr
-section = parens $ choice [ try (string o >> return (Var to))
-                          | (o, to) <- allOps ops ]
 
 bracket :: Parser Expr
 bracket = parens expr
@@ -245,10 +241,17 @@ typeConstr = do
   return $ TyConstr id args
 
 ident :: Parser Ident
-ident = try $ lexeme $ do
+ident = litIdent <|> opIdent
+
+litIdent :: Parser Ident
+litIdent = try $ lexeme $ do
   id <- (:) <$> satisfy validFirstId <*> many (satisfy validIdent)
   guard $ not (id `elem` keywords)
   return id
+
+opIdent :: Parser Ident
+opIdent = parens $ choice [ try (string o) >> return to
+                          | (o, to) <- allOps ops ]
 
 idents :: Parser [Ident]
 idents = sepEndBy1 ident whitespace

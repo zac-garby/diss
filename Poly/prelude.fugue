@@ -1,8 +1,8 @@
-__comp : (b -> c) -> (a -> b) -> a -> c;
-__comp f g x = f (g x);
+(.) : (b -> c) -> (a -> b) -> a -> c;
+(.) f g x = f (g x);
 
-__apply : (a -> b) -> a -> b;
-__apply f x = f x;
+($) : (a -> b) -> a -> b;
+($) f x = f x;
 
 id : a -> a;
 id x = x;
@@ -22,16 +22,14 @@ neg x = x * -1;
 fix : (a -> a) -> a;
 fix f = f (fix f);
 
-append : [a] -> [a] -> [a];
-append xs ys =
+(++) : [a] -> [a] -> [a];
+(++) xs ys =
   if null xs
   then ys
-  else head xs :: append (tail xs) ys;
+  else head xs :: tail xs ++ ys;
 
-__app = append;
-
-__index : [a] -> Int -> a;
-__index xs i =
+(!) : [a] -> Int -> a;
+(!) xs i =
   if i == 0
   then head xs
   else tail xs ! (i - 1);
