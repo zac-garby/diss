@@ -263,7 +263,12 @@ int = try $ do
   return $ read (m ++ n)
 
 whitespace :: Parser ()
-whitespace = void $ many $ oneOf " \n\t"
+whitespace = skipMany (try lineComment <|> void (oneOf " \n\t"))
+
+lineComment :: Parser ()
+lineComment = do
+  string "--"
+  skipMany (satisfy (/= '\n'))
 
 lexeme :: Parser a -> Parser a
 lexeme p = p <* whitespace
