@@ -38,6 +38,7 @@ instance Ord Type where
 data TypeError = UnifyInfiniteError Ident Type
                | UnifyConstructorsError Ident Ident
                | UnifyConstructorArityMismatch Ident Int Int
+               | TypeSpecMismatch Scheme Scheme
                | UnboundVariableError Ident
                | FoundHoles Scheme [BoundHole]
 
@@ -50,6 +51,8 @@ instance Show TypeError where
     "could not unify type " ++ c1 ++ " with " ++ c2
   show (UnifyConstructorArityMismatch c a1 a2)
     = "type constructor arity mismatch in " ++ c ++ ": " ++ show a1 ++ " vs " ++ show a2
+  show (TypeSpecMismatch te tr)
+    = "expression of type : " ++ show te ++ " does not match requested type : " ++ show tr
   show (UnboundVariableError v) =
     "unbound variable: " ++ v
   show (FoundHoles sch hs) =
@@ -125,9 +128,13 @@ infer (LitTuple xs) = do
   return $ tyTuple ts
 
 infer (TypeSpec e t) = do
-  te <- infer e
-  te ~~ t
-  return t
+  (te, cs) <- listen $ infer e
+  s <- lift $ runUnify (solve cs)
+  sch <- local (sub s) (generalise (sub s te))
+  t' <- local (sub s) (generalise t)
+  if sch <= t'
+    then return t
+    else throwError $ TypeSpecMismatch sch t'
 
 infer (Hole i) = return $ TyHole i
 
