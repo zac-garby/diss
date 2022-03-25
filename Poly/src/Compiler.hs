@@ -5,7 +5,6 @@ module Compiler ( Term (..)
                 , Index
                 , list2clist
                 , clist2list
-                , outputShow
                 , compile ) where
 
 import Data.List
@@ -49,23 +48,6 @@ instance Show Term where
   show (CBuiltin Full f) = "<builtin>"
   show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
   show (CBuiltin None f) = "<builtin (no eval)>"
-
-outputShow :: Term -> Maybe String
-outputShow (CLitInt i) = Just $ show i
-outputShow (CLitBool b) = Just $ show b
-outputShow (CLitChar c) = Just $ show c
-outputShow (CLitNil) = Just "[]"
-outputShow c@(CLitCons (CLitChar _) _) = do
-  cs <- clist2list c
-  return $ "\"" ++ map (\(CLitChar c) -> c) cs ++ "\""
-outputShow c@(CLitCons h t) = do
-  ts <- clist2list c
-  strings <- mapM outputShow ts
-  return $ "[" ++ intercalate ", " strings ++ "]"
-outputShow (CLitTuple xs) = do
-  xs' <- mapM outputShow xs
-  return $ "(" ++ intercalate ", " xs' ++ ")"
-outputShow _ = Nothing
 
 bracket :: String -> String
 bracket s = "(" ++ s ++ ")"

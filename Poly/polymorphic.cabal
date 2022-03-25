@@ -25,6 +25,7 @@ library
                    , Compiler
                    , Eval
                    , Env
+                   , Pretty
 
     build-depends:    base ^>=4.14.3.0
                     , mtl

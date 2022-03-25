@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts, FlexibleInstances #-}
 
 module Infer ( TypeError (..)
-             , Infer
+             , BoundHole (..)
              , typecheck
              , finalise ) where
 
@@ -36,28 +36,10 @@ instance Ord Type where
   t1 <= t2 = Forall [] t1 <= Forall [] t2
 
 data TypeError = UnifyInfiniteError Ident Type
-               | UnifyConstructorsError Ident Ident
-               | UnifyConstructorArityMismatch Ident Int Int
+               | UnifyConstructorsError Type Type
                | TypeSpecMismatch Scheme Scheme
                | UnboundVariableError Ident
                | FoundHoles Scheme [BoundHole]
-
-instance Show TypeError where
-  show (UnifyInfiniteError v t)
-    = "could not construct infinite type " ++ v ++ " ~ " ++ show t
-  show (UnifyConstructorsError c1 "→") =
-    "a " ++ c1 ++ " cannot be used as a function"
-  show (UnifyConstructorsError c1 c2) =
-    "could not unify type " ++ c1 ++ " with " ++ c2
-  show (UnifyConstructorArityMismatch c a1 a2)
-    = "type constructor arity mismatch in " ++ c ++ ": " ++ show a1 ++ " vs " ++ show a2
-  show (TypeSpecMismatch te tr)
-    = "expression of type : " ++ show te ++ " does not match requested type : " ++ show tr
-  show (UnboundVariableError v) =
-    "unbound variable: " ++ v
-  show (FoundHoles sch hs) =
-    "found holes in " ++ show sch ++ ":\n"
-    ++ intercalate "\n" (map show hs)
 
 type Infer = RWST
   Env                -- typing environment
@@ -193,9 +175,8 @@ unify t (TyVar v) = v `extend` t
 unify (TyVar v) t = v `extend` t
 unify t h@(TyHole _) = show h `extend` t
 unify h@(TyHole _) t = show h `extend` t
-unify (TyConstr c1 ts1) (TyConstr c2 ts2)
-  | c1 /= c2 = throwError $ UnifyConstructorsError c1 c2
-  | a1 /= a2 = throwError $ UnifyConstructorArityMismatch c1 a1 a2
+unify a@(TyConstr c1 ts1) b@(TyConstr c2 ts2)
+  | c1 /= c2 || a1 /= a2 = throwError $ UnifyConstructorsError a b
   | otherwise = unifyPairs (zip ts1 ts2)
   where a1 = length ts1
         a2 = length ts2
@@ -261,21 +242,10 @@ makeRenamer t = snd $ S.execState (traverse mk t) (allVars, [])
 
 
 data BoundHole = BoundHole HoleIndex Type Env
+  deriving Show
 
 instance Sub BoundHole where
   sub s (BoundHole i t e) = BoundHole i (sub s t) (sub s e)
-
-instance Show BoundHole where
-  show (BoundHole i ty env)
-    | null relevant = "    ?" ++ show i ++ " : " ++ show ty
-                   ++ "\n      no relevant bindings"
-    | otherwise = "    ?" ++ show i ++ " : " ++ show ty
-                   ++ "\n      relevant bindings include:\n"
-                   ++ intercalate "\n" [ "        " ++ pprintIdent ops id ++ " : " ++ show t
-                                      | (id, (t, l)) <- relevant ]
-
-    where relevant = reverse $ nubBy (\(i, _) (j, _) -> i == j)
-                     [ (id, (t, l)) | (id, (t, l)) <- env, l == Local ]
 
 typeHoles :: Expr -> Type -> Infer (Type, [BoundHole])
 typeHoles expr t = do

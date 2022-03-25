@@ -15,6 +15,7 @@ import Infer
 import Compiler
 import Eval
 import Env
+import Pretty
 
 type Interactive = ExceptT Error (StateT Environment IO)
 
@@ -51,7 +52,7 @@ handleCommand :: String -> Interactive ()
 handleCommand "" = repl
 handleCommand (':':'p':rest) = perf rest
 handleCommand (':':'l':rest) = loadFiles (words rest)
-handleCommand (':':'b':[])   = browse
+handleCommand (':':'b':[])   = search "t"
 handleCommand (':':'b':rest) = search rest
 handleCommand (':':'t':rest) = checkType rest
 handleCommand (':':'h':rest) = help
@@ -66,7 +67,7 @@ handleInput s = do
   
   liftIO $ do
     printTerm $ eval (subEnv (envTerms env) term)
-    putStrLn $ "  : " ++ show sch
+    putStrLn $ "  : " ++ prettyScheme sch
 
 perf :: String -> Interactive ()
 perf s = do
@@ -87,12 +88,6 @@ loadFiles fs = do
 
   liftIO $ putStrLn $ "  loaded " ++ show (length fs) ++ " file(s)"
 
-browse :: Interactive ()
-browse = do
-  env <- get
-  forM_ env $ \(name, (sch, t)) ->
-    liftIO $ putStrLn $ "  " ++ pprintIdent ops name ++ " : " ++ show sch
-
 search :: String -> Interactive ()
 search s = do
   ty <- parseType "<repl>" s ?? SyntaxErr
@@ -102,14 +97,13 @@ search s = do
 
   liftIO $ case matches of
     [] -> putStrLn $ "  no matches found for " ++ show sch
-    matches -> forM_ matches $ \(name, (sch', t)) -> do
-      putStrLn $ "  " ++ pprintIdent ops name ++ " : " ++ show sch'
+    matches -> putStrLn $ prettyEnv matches
 
 checkType :: String -> Interactive ()
 checkType s = do
   t <- parseExpr "<repl>" s ?? SyntaxErr
   sch <- typecheckTerm t
-  liftIO $ putStrLn $ "  : " ++ show sch
+  liftIO $ putStrLn $ "  : " ++ prettyScheme sch
 
 help :: Interactive ()
 help = liftIO $ do
@@ -157,7 +151,7 @@ restore oldEnv err = do
   put oldEnv
 
 printTerm :: Term -> IO ()
-printTerm t = case outputShow t of
+printTerm t = case prettyTerm t of
                 Just s -> putStrLn $ "  = " ++ s
                 Nothing -> return ()
 
