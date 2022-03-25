@@ -30,7 +30,11 @@ instance Show Error where
   show (FileErr fp) = "file '" ++ fp ++ "' does not exist"
 
 main :: IO ()
-main = void $ evalStateT (runExceptT repl) defaultEnv
+main = do
+  putStrLn "fugue v1.0"
+  putStrLn "type :h for available commands"
+  evalStateT (runExceptT repl) defaultEnv
+  return ()
 
 repl :: Interactive ()
 repl = forever $ do
