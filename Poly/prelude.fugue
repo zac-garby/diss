@@ -1,19 +1,28 @@
+__comp : (b -> c) -> (a -> b) -> a -> c;
 __comp f g x = f (g x);
 
+__apply : (a -> b) -> a -> b;
 __apply f x = f x;
 
+id : a -> a;
 id x = x;
 
+swap : (a -> b -> c) -> b -> a -> c;
 swap f x y = f y x;
 
+const : a -> b -> a;
 const x y = x;
 
+not : Bool -> Bool;
 not b = if b then False else True;
 
+neg : Int -> Int;
 neg x = x * -1;
 
+fix : (a -> a) -> a;
 fix f = f (fix f);
 
+append : [a] -> [a] -> [a];
 append xs ys =
   if null xs
   then ys
@@ -21,11 +30,13 @@ append xs ys =
 
 __app = append;
 
+__index : [a] -> Int -> a;
 __index xs i =
   if i == 0
   then head xs
   else tail xs ! (i - 1);
 
+reverse : [a] -> [a];
 reverse xs =
   let rec rev-aux xs acc =
     if null xs
@@ -33,49 +44,52 @@ reverse xs =
 	else rev-aux (tail xs) (head xs :: acc)
   in rev-aux xs [];
 
+take : Int -> [a] -> [a];
 take n xs =
   if n == 0
   then []
   else head xs :: take (n - 1) (tail xs);
 
+drop : Int -> [a] -> [a];
 drop n xs =
   if n == 0
   then xs
   else drop (n - 1) (tail xs);
 
-seq n = n :: seq (n + 1);
-
-repeat a = a :: repeat a;
-
-replicate xs = xs ++ replicate xs;
-
+range : Int -> Int -> [Int];
 range m n =
   if m == n
   then [m]
   else m :: range (m + 1) n;
 
+map : (a -> b) -> [a] -> [b];
 map f xs =
   if null xs
   then []
   else f (head xs) :: map f (tail xs);
 
+foldr : (a -> b -> b) -> b -> [a] -> b;
 foldr f z xs =
   if null xs
   then z
   else f (head xs) (foldr f z (tail xs));
 
+foldl : (a -> b -> a) -> a -> [b] -> a;
 foldl f z xs =
   if null xs
   then z
   else foldl f (f z (head xs)) (tail xs);
 
+sum : [Int] -> Int;
 sum = foldr (+) 0;
 
+length : [a] -> Int;
 length xs =
   if null xs
   then 0
   else 1 + length (tail xs);
 
+zipWith : (a -> b -> c) -> [a] -> [b] -> [c];
 zipWith f xs ys =
   if null xs
   then []
@@ -83,10 +97,12 @@ zipWith f xs ys =
        then []
 	   else f (head xs) (head ys) :: zipWith f (tail xs) (tail ys);
 
+zip : [a] -> [b] -> [(a, b)];
 zip = zipWith (\x y -> (x, y));
 
-enumerate = zip (seq 0);
+enumerate : [a] -> [(Int, a)];
 
+filter : (a -> Bool) -> [a] -> [a];
 filter p xs =
   if null xs
   then []

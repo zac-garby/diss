@@ -133,12 +133,22 @@ loadFile file = do
   typecheckProgram p
 
 typecheckProgram :: Program -> Interactive ()
-typecheckProgram defs = forM_ defs $ \(Definition name t) -> do
-  env <- gets fromEnvironment
-  let t' = LetRec name t (Var name)
-  sch <- typecheck env t' ?? TypeErr
-  term <- compile env t' ?? CompileErr
-  modify (insertKV name (sch, term))
+typecheckProgram prog = do
+  let (types, defs) = programParts prog
+  forM_ defs $ \(name, t) -> do
+    env <- gets fromEnvironment
+    let t' = case lookup name types of
+               Just ty -> TypeSpec (LetRec name t (Var name)) ty
+               Nothing -> LetRec name t (Var name)
+    sch <- typecheck env t' ?? TypeErr
+    term <- compile env t' ?? CompileErr
+    modify (insertKV name (sch, term))
+
+-- splits a program into (all type defs, all term defs)
+programParts :: Program -> ([(Ident, Type)], [(Ident, Expr)])
+programParts [] = ([], [])
+programParts (d@(Definition n t):ds) = ([], [(n, t)]) `mappend` programParts ds
+programParts (d@(TypeDefinition n t):ds) = ([(n, t)], []) `mappend` programParts ds
 
 restore :: Environment -> Error -> Interactive ()
 restore oldEnv err = do

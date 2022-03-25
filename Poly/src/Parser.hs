@@ -26,8 +26,11 @@ import Debug.Trace
 import Types
 
 type Ident = String
+
 data Definition = Definition Ident Expr
-  deriving Show
+                | TypeDefinition Ident Type
+                deriving Show
+
 type Program = [Definition]
 
 data Expr = Var Ident
@@ -84,7 +87,22 @@ parseWrapper p f s = case runParser p 0 f s of
   Right a -> return a
 
 program :: Parser Program
-program = sepEndBy def (keyword ";")
+program = sepEndBy (choice [try def, typeDef]) (keyword ";")
+
+def :: Parser Definition
+def = lexeme $ do
+  name <- ident
+  args <- sepBy ident whitespace
+  equals
+  body <- expr
+  return $ Definition name (foldr Abs body args)
+
+typeDef :: Parser Definition
+typeDef = lexeme $ do
+  name <- ident
+  colon
+  t <- typeExpr
+  return $ TypeDefinition name t
 
 expr :: Parser Expr
 expr = choice [try typeSpec, op]
@@ -246,14 +264,6 @@ whitespace = void $ many $ oneOf " \n\t"
 
 lexeme :: Parser a -> Parser a
 lexeme p = p <* whitespace
-
-def :: Parser Definition
-def = lexeme $ do
-  name <- ident
-  args <- sepBy ident whitespace
-  equals
-  body <- expr
-  return $ Definition name (foldr Abs body args)
 
 lambda = keyword "\\" <|> keyword "λ"
   <?> "lambda"
