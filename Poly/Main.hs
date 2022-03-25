@@ -74,11 +74,12 @@ perf s = do
 loadFiles :: [String] -> Interactive ()
 loadFiles fs = do
   forM_ fs $ \f -> do
-    exist <- liftIO $ doesFileExist f
+    let fn = f ++ ".fugue"
+    exist <- liftIO $ doesFileExist fn
     if exist then
-      loadFile f
+      loadFile fn
     else
-      throwError f ?? FileErr
+      throwError fn ?? FileErr
 
   liftIO $ putStrLn $ "  loaded " ++ show (length fs) ++ " file(s)"
 
