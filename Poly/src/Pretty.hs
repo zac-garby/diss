@@ -90,3 +90,7 @@ instance Show TypeError where
   show (FoundHoles sch hs) =
     "found holes in " ++ prettyScheme sch ++ ":\n"
     ++ intercalate "\n" (map prettyHole hs)
+
+instance Show CompilerError where
+  show (UndefinedVariable v) = "undeclared variable: " ++ v
+  show FoundHole = "attempted to compile an incomplete expression containing a hole"

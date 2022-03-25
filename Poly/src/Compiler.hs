@@ -55,10 +55,6 @@ bracket s = "(" ++ s ++ ")"
 data CompilerError = UndefinedVariable Ident
                    | FoundHole
 
-instance Show CompilerError where
-  show (UndefinedVariable v) = "undeclared variable: " ++ v
-  show FoundHole = "attempted to compile an incomplete expression containing a hole"
-
 type Compiler = ReaderT [Ident] (Except CompilerError)
 
 compile :: Env -> Expr -> Except CompilerError Term
