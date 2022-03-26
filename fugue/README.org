@@ -1,0 +1,7 @@
+* Fugue
+
+  A functional programming language with a number of useful features:
+   - Polymorphic types, with full type inference
+   - Typed holes and hole inference
+   - A built-in Hoogle-like interface for searching the environment
+   - An optional prelude

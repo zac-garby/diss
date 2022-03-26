@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               polymorphic
+name:               fugue
 version:            0.1.0.0
 synopsis:
 
@@ -36,7 +36,7 @@ library
 
     ghc-options: -O2
 
-executable polymorphic
+executable fugue
     main-is:          Main.hs
 
     ghc-options: -O2
@@ -47,7 +47,7 @@ executable polymorphic
                   , directory
                   , mtl
                   , parsec ^>=3.1.15.0
-                  , polymorphic
+                  , fugue
                   , time
 
     -- Directories containing source files.
