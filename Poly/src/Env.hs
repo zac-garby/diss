@@ -1,6 +1,8 @@
 module Env ( Environment
            , defaultEnv ) where
 
+import Data.Char
+
 import Types
 import Infer
 import Compiler
@@ -28,7 +30,11 @@ defaultEnv = [ ("__add", intBinOp (+))
                         , CBuiltin WHNF nullFn ))
              , ("__cons", ( finalise $ a --> tyList a --> tyList a
                         , CBuiltin None $ \h ->
-                            CBuiltin None $ \t -> CLitCons h t )) ]
+                            CBuiltin None $ \t -> CLitCons h t ))
+             , ("chr", ( finalise $ tyInt --> tyChar
+                       , toTerm chr ))
+             , ("ord", ( finalise $ tyChar --> tyInt
+                       , toTerm ord )) ]
 
 intBinOp :: (Int -> Int -> Int) -> (Scheme, Term)
 intBinOp f = ( finalise $ tyInt --> tyInt --> tyInt
