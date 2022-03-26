@@ -115,3 +115,6 @@ filter p xs =
 	   if p hd
 	   then hd :: filter p tl
 	   else filter p tl;
+
+comparing : (a -> Int) -> a -> a -> Bool;
+comparing f x y = f x <= f y;

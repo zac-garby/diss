@@ -10,11 +10,13 @@ fib n = if n == 0
   
 dot = ((.) . (.)) sum (zipWith (*));
 
-sort xs =
+sortOn lte xs =
   if null xs
   then []
   else let hd = head xs in
   	   let tl = tail xs in
-	   let left = filter (\x -> x <= hd) tl in
-	   let right = filter (\x -> x > hd) tl in
-	   sort left ++ [hd] ++ sort right;
+	   let left = filter (\x -> lte x hd) tl in
+	   let right = filter (\x -> not (lte x hd)) tl in
+	   sortOn lte left ++ [hd] ++ sortOn lte right;
+
+sort = sortOn (<=);
