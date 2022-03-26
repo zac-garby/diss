@@ -86,7 +86,7 @@ instance Show TypeError where
   show (TypeSpecMismatch te tr) =
     "expression of type : " ++ prettyScheme te ++ " does not match requested type : " ++ prettyScheme tr
   show (UnboundVariableError v) =
-    "unbound variable: " ++ colour 33 v
+    "unbound variable: " ++ colour 33 (pprintIdent ops v)
   show (FoundHoles sch hs) =
     "found holes in " ++ prettyScheme sch ++ ":\n"
     ++ intercalate "\n" (map prettyHole hs)
