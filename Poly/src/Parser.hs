@@ -1,11 +1,13 @@
 module Parser ( Expr (..)
               , Definition (..)
+              , ReplInput (..)
               , Ident
               , Program
               , ops
               , parseExpr
               , parseProgram
               , parseType
+              , parseRepl
               , pprintIdent
               , foldExpr
               , isComplete
@@ -30,6 +32,9 @@ type Ident = String
 data Definition = Definition Ident Expr
                 | TypeDefinition Ident Type
                 deriving Show
+
+data ReplInput = ReplDef Definition | ReplExpr Expr
+  deriving Show
 
 type Program = [Definition]
 
@@ -78,6 +83,7 @@ pprintIdent ((_, level):ops) id = case find ((== id) . snd) level of
 parseProgram = parseWrapper (only program)
 parseExpr = parseWrapper (only expr)
 parseType = parseWrapper (only typeExpr)
+parseRepl = parseWrapper (only replInput)
 
 only p = whitespace *> p <* whitespace <* eof
 
@@ -88,6 +94,10 @@ parseWrapper p f s = case runParser p 0 f s of
 
 program :: Parser Program
 program = sepEndBy (choice [try def, typeDef]) (keyword ";")
+
+replInput :: Parser ReplInput
+replInput = (ReplExpr <$> try expr)
+        <|> (ReplDef <$> try (keyword "let" >> def))
 
 def :: Parser Definition
 def = lexeme $ do

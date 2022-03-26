@@ -60,7 +60,13 @@ handleCommand s = handleInput s
 
 handleInput :: String -> Interactive ()
 handleInput s = do
-  t <- parseExpr "<repl>" s ?? SyntaxErr
+  t <- parseRepl "<repl>" s ?? SyntaxErr
+  case t of
+    ReplExpr e -> handleExpr e
+    ReplDef d -> typecheckProgram [d]
+
+handleExpr :: Expr -> Interactive ()
+handleExpr t = do
   sch <- typecheckTerm t
   env <- get
   term <- compile (fromEnvironment env) t ?? CompileErr
