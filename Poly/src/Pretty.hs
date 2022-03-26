@@ -4,6 +4,7 @@ module Pretty ( prettyTerm
               , prettyEnv ) where
 
 import Data.List
+import Data.Char
 
 import Compiler
 import Types
@@ -31,7 +32,8 @@ prettyTerm (CLitTuple xs) = do
 prettyTerm _ = Nothing
 
 prettyType :: Type -> String
-prettyType (TyVar v) = emph 32 v
+prettyType (TyVar v) = colour (92 + m) v
+  where m = (sum (map ord v) - ord 'a') `mod` 5
 prettyType (TyConstr "→" [l,r]) = bracketType l ++ " → " ++ prettyType r
 prettyType (TyConstr "List" [t]) = "[" ++ prettyType t ++ "]"
 prettyType (TyConstr "Tuple" xs) = "(" ++ intercalate ", " (map prettyType xs) ++ ")"
@@ -68,9 +70,6 @@ bracketType t = prettyType t
 
 colour :: Int -> String -> String
 colour n s = "\ESC[0;" ++ show n ++ "m" ++ s ++ "\ESC[0m"
-
-emph :: Int -> String -> String
-emph n s = "\ESC[4;" ++ show n ++ "m" ++ s ++ "\ESC[0m"
 
 leftPad :: Int -> String -> String
 leftPad n s
