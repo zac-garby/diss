@@ -49,6 +49,15 @@ instance Show Term where
   show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
   show (CBuiltin None f) = "<builtin (no eval)>"
 
+instance Eq Term where
+  (CInt x) == (CInt y) = x == y
+  (CBool x) == (CBool y) = x == y
+  (CChar x) == (CChar y) = x == y
+  CNil == CNil = True
+  (CCons x xs) == (CCons y ys) = x == y && xs == ys
+  (CTuple xs) == (CTuple ys) = and $ zipWith (==) xs ys
+  _ == _ = False
+
 bracket :: String -> String
 bracket s = "(" ++ s ++ ")"
 
