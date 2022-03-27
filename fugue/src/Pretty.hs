@@ -15,18 +15,18 @@ import Infer
 -- a pretty-printer for terms.
 -- if the term is not designed to be user-visible, Nothing is returned
 prettyTerm :: Term -> Maybe String
-prettyTerm (CLitInt i) = Just $ colour 32 (show i)
-prettyTerm (CLitBool b) = Just $ colour 32 (show b)
-prettyTerm (CLitChar c) = Just $ colour 32 (show c)
-prettyTerm (CLitNil) = Just $ "[]"
-prettyTerm c@(CLitCons (CLitChar _) _) = do
+prettyTerm (CInt i) = Just $ colour 32 (show i)
+prettyTerm (CBool b) = Just $ colour 32 (show b)
+prettyTerm (CChar c) = Just $ colour 32 (show c)
+prettyTerm (CNil) = Just $ "[]"
+prettyTerm c@(CCons (CChar _) _) = do
   cs <- clist2list c
-  return $ colour 32 ("\"" ++ map (\(CLitChar c) -> c) cs ++ "\"")
-prettyTerm c@(CLitCons h t) = do
+  return $ colour 32 ("\"" ++ map (\(CChar c) -> c) cs ++ "\"")
+prettyTerm c@(CCons h t) = do
   ts <- clist2list c
   strings <- mapM prettyTerm ts
   return $ "[" ++ intercalate ", " strings ++ "]"
-prettyTerm (CLitTuple xs) = do
+prettyTerm (CTuple xs) = do
   xs' <- mapM prettyTerm xs
   return $ "(" ++ intercalate ", " xs' ++ ")"
 prettyTerm _ = Nothing

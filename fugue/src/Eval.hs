@@ -51,32 +51,32 @@ evalFix (CFix t) = do
 evalFix _ = Nothing
 
 evalIf :: Term -> Maybe Term
-evalIf (CIf (CLitBool True) t _) = return t
-evalIf (CIf (CLitBool False) _ f) = return f
+evalIf (CIf (CBool True) t _) = return t
+evalIf (CIf (CBool False) _ f) = return f
 evalIf (CIf cond t f) = do
   cond' <- evalStep cond
   return $ CIf cond' t f
 evalIf _ = Nothing
 
 evalHead :: Term -> Maybe Term
-evalHead (CLitCons h t) = do
+evalHead (CCons h t) = do
   h' <- evalStep h
-  return $ CLitCons h' t
+  return $ CCons h' t
 evalHead _ = Nothing
 
 evalTail :: Term -> Maybe Term
-evalTail (CLitCons h t) = do
+evalTail (CCons h t) = do
   t' <- evalStep t
-  return $ CLitCons h t'
+  return $ CCons h t'
 evalTail _ = Nothing
 
 evalTuple :: Term -> Maybe Term
-evalTuple (CLitTuple (x:xs)) = case evalStep x of
-  Just x' -> return $ CLitTuple (x' : xs)
+evalTuple (CTuple (x:xs)) = case evalStep x of
+  Just x' -> return $ CTuple (x' : xs)
   Nothing -> do
-    rest <- evalTuple (CLitTuple xs)
-    let (CLitTuple xs') = rest
-    return $ CLitTuple (x : xs')
+    rest <- evalTuple (CTuple xs)
+    let (CTuple xs') = rest
+    return $ CTuple (x : xs')
 evalTuple _ = Nothing
 
 isProper :: EvalType -> Term -> Bool
@@ -92,16 +92,16 @@ isValue (CApp (CBuiltin _ _) _) = False
 isValue (CApp a b) = isValue a && isValue b
 isValue (CFix t) = False
 isValue (CIf _ _ _) = False
-isValue (CLitInt _) = True
-isValue (CLitBool _) = True
-isValue (CLitChar _) = True
-isValue CLitNil = True
-isValue (CLitCons a b) = isValue a && isValue b
-isValue (CLitTuple xs) = all isValue xs
+isValue (CInt _) = True
+isValue (CBool _) = True
+isValue (CChar _) = True
+isValue CNil = True
+isValue (CCons a b) = isValue a && isValue b
+isValue (CTuple xs) = all isValue xs
 isValue (CBuiltin _ _) = True
 
 isWHNF :: Term -> Bool
-isWHNF (CLitCons h _) = isValue h
+isWHNF (CCons h _) = isValue h
 isWHNF t = isValue t
 
 shift :: Int -> Term -> Term
@@ -114,12 +114,12 @@ shift' d c (CAbs t) = CAbs (shift' d (c + 1) t)
 shift' d c (CApp f x) = CApp (shift' d c f) (shift' d c x)
 shift' d c (CFix t) = CFix (shift' d c t)
 shift' d c (CIf cond t f) = CIf (shift' d c cond) (shift' d c t) (shift' d c f)
-shift' d c (CLitInt i) = CLitInt i
-shift' d c (CLitBool b) = CLitBool b
-shift' d c (CLitChar ch) = CLitChar ch
-shift' d c (CLitNil) = CLitNil
-shift' d c (CLitCons a b) = CLitCons (shift' d c a) (shift' d c b)
-shift' d c (CLitTuple xs) = CLitTuple (map (shift' d c) xs)
+shift' d c (CInt i) = CInt i
+shift' d c (CBool b) = CBool b
+shift' d c (CChar ch) = CChar ch
+shift' d c (CNil) = CNil
+shift' d c (CCons a b) = CCons (shift' d c a) (shift' d c b)
+shift' d c (CTuple xs) = CTuple (map (shift' d c) xs)
 shift' d c (CBuiltin t f) = CBuiltin t f
 
 (-->) :: Int -> Term -> Term -> Term
@@ -129,10 +129,10 @@ shift' d c (CBuiltin t f) = CBuiltin t f
 (j --> s) (CApp f x) = (CApp $! (j --> s) f) $! ((j --> s) x)
 (j --> s) (CFix t) = CFix $! (j --> s) t
 (j --> s) (CIf cond t f) = CIf ((j --> s) cond) ((j --> s) t) ((j --> s) f)
-(j --> s) (CLitInt i) = CLitInt i
-(j --> s) (CLitBool b) = CLitBool b
-(j --> s) (CLitChar c) = CLitChar c
-(j --> s) (CLitNil) = CLitNil
-(j --> s) (CLitCons a b) = CLitCons ((j --> s) a) ((j --> s) b)
-(j --> s) (CLitTuple xs) = CLitTuple (map (j --> s) xs)
+(j --> s) (CInt i) = CInt i
+(j --> s) (CBool b) = CBool b
+(j --> s) (CChar c) = CChar c
+(j --> s) (CNil) = CNil
+(j --> s) (CCons a b) = CCons ((j --> s) a) ((j --> s) b)
+(j --> s) (CTuple xs) = CTuple (map (j --> s) xs)
 (j --> s) (CBuiltin t f) = CBuiltin t f

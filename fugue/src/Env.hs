@@ -30,7 +30,7 @@ defaultEnv = [ ("__add", intBinOp (+))
                         , CBuiltin WHNF nullFn ))
              , ("__cons", ( finalise $ a --> tyList a --> tyList a
                         , CBuiltin None $ \h ->
-                            CBuiltin None $ \t -> CLitCons h t ))
+                            CBuiltin None $ \t -> CCons h t ))
              , ("chr", ( finalise $ tyInt --> tyChar
                        , toTerm chr ))
              , ("ord", ( finalise $ tyChar --> tyInt
@@ -45,7 +45,7 @@ intCompOp f = ( finalise $ tyInt --> tyInt --> tyBool
               , toTerm f )
 
 intFn :: (Int -> Term) -> Term
-intFn f = CBuiltin Full $ \(CLitInt n) -> f n
+intFn f = CBuiltin Full $ \(CInt n) -> f n
 
 listFn :: ([Term] -> Term) -> Term
 listFn f = CBuiltin Full $ \t -> case clist2list t of
@@ -53,13 +53,13 @@ listFn f = CBuiltin Full $ \t -> case clist2list t of
   Nothing -> error "this shouldn't happen"
 
 headFn :: Term -> Term
-headFn (CLitCons hd _) = hd
-headFn CLitNil = error "the empty list doesn't have a head"
+headFn (CCons hd _) = hd
+headFn CNil = error "the empty list doesn't have a head"
 
 tailFn :: Term -> Term
-tailFn (CLitCons _ tl) = tl
-tailFn CLitNil = error "the empty list doesn't have a tail"
+tailFn (CCons _ tl) = tl
+tailFn CNil = error "the empty list doesn't have a tail"
 
 nullFn :: Term -> Term
-nullFn (CLitCons _ _) = toTerm False
-nullFn CLitNil = toTerm True
+nullFn (CCons _ _) = toTerm False
+nullFn CNil = toTerm True
