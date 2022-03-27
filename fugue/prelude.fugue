@@ -54,6 +54,14 @@ drop n xs =
   then xs
   else drop (n - 1) (tail xs);
 
+elem : a -> [a] -> Bool;
+elem x xs =
+  if null xs
+  then False
+  else if head xs == x
+       then True
+	   else elem x (tail xs);
+
 range : Int -> Int -> [Int];
 range m n =
   if m == n
