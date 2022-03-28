@@ -8,6 +8,7 @@ import Data.Char
 
 import Compiler
 import Types
+import Holes
 import Env
 import Parser
 import Infer
@@ -52,18 +53,15 @@ prettyEnv env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (pprin
   where longestName = maximum (map (length . fst) env)
 
 prettyHole :: BoundHole -> String
-
-prettyHole (BoundHole i ty env)
+prettyHole bh@(BoundHole i ty env)
   = "    hole " ++ colour 33 (show i) ++ ":\n" ++
     "      wants : " ++ prettyType ty
-  ++ case relevant of
+  ++ case relevant bh of
       [] -> ""
       relevant -> "\n      given ="
               ++ drop 13 (intercalate ",\n" [ "              " ++ colour 33 (pprintIdent ops id) ++
                                             " : " ++ prettyScheme t | (id, (t, l)) <- relevant ])
-  where relevant = reverse $ nubBy (\(i, _) (j, _) -> i == j)
-                   [ (id, (t, l)) | (id, (t, l)) <- env, l == Local ]
-
+              
 bracketType :: Type -> String
 bracketType t@(TyConstr "→" _) = "(" ++ prettyType t ++ ")"
 bracketType t = prettyType t

@@ -16,6 +16,7 @@ import Control.Monad.State.Lazy (StateT, State)
 import Debug.Trace
 
 import Types
+import Holes
 import Parser
 
 type Constraint = (Type, Type)
@@ -239,13 +240,6 @@ makeRenamer t = snd $ S.execState (traverse mk t) (allVars, [])
           case lookup v existing of
             Just n -> return ()
             Nothing -> S.put (rest, (v, TyVar new) : existing)
-
-
-data BoundHole = BoundHole HoleIndex Type Env
-  deriving Show
-
-instance Sub BoundHole where
-  sub s (BoundHole i t e) = BoundHole i (sub s t) (sub s e)
 
 typeHoles :: Expr -> Type -> Infer (Type, [BoundHole])
 typeHoles expr t = do
