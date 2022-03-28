@@ -55,12 +55,18 @@ prettyEnv env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (pprin
 prettyHole :: BoundHole -> String
 prettyHole bh@(BoundHole i ty env)
   = "    hole " ++ colour 33 (show i) ++ ":\n" ++
-    "      wants : " ++ prettyType ty
-  ++ case relevant bh of
+    "      wants : " ++ prettyType ty ++
+    case relevant bh of
       [] -> ""
       relevant -> "\n      given ="
               ++ drop 13 (intercalate ",\n" [ "              " ++ colour 33 (pprintIdent ops id) ++
                                             " : " ++ prettyScheme t | (id, (t, l)) <- relevant ])
+    ++
+    case possibleFits bh of
+      [] -> ""
+      fits -> "\n      fits include ="
+             ++ drop 20 (intercalate ",\n" [ "                     " ++ colour 33 (pprintIdent ops id) ++
+                                           " : " ++ prettyScheme t | (id, (t, l)) <- take 5 fits ])
               
 bracketType :: Type -> String
 bracketType t@(TyConstr "→" _) = "(" ++ prettyType t ++ ")"

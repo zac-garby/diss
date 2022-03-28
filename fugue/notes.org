@@ -17,3 +17,5 @@
   Fixed - needed to =sub s= to the env when generalising the type for a let expression.
 
   Simple syntax & semantics compared to GHC, nice as an embedded language for example. Also pure.
+
+  Nice example for fitting: =sortOn (comparing ?) ["Hello", "world"]=

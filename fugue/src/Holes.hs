@@ -1,5 +1,6 @@
 module Holes ( BoundHole (..)
-             , relevant ) where
+             , relevant
+             , possibleFits ) where
 
 import Data.List
 
@@ -15,3 +16,14 @@ instance Sub BoundHole where
 relevant :: BoundHole -> Env
 relevant (BoundHole _ _ env) = reverse $ nubBy (\(i, _) (j, _) -> i == j)
            [ (id, (t, l)) | (id, (t, l)) <- env, l == Local ]
+
+possibleFits :: BoundHole -> Env
+possibleFits (BoundHole _ t env) =
+  nubBy (\(i, _) (j, _) -> i == j) $ best ++ viable
+  where sch = finalise t
+        best = filter (\(_, (sch', _)) -> sch' <= sch) env
+        
+        -- these fits would involve specialising the type of the hole
+        -- which is not always desirable
+        viable = filter (\(_, (sch', _)) -> sch <= sch') env
+
