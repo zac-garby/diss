@@ -126,3 +126,21 @@ filter p xs =
 
 comparing : (a -> Int) -> a -> a -> Bool;
 comparing f x y = f x <= f y;
+
+init : [a] -> [a];
+init xs =
+  if length xs <= 1
+  then []
+  else head xs :: init (tail xs);
+
+last : [a] -> a;
+last xs =
+  if length xs == 1
+  then head xs
+  else last (tail xs);
+
+tails : [a] -> [[a]];
+tails xs =
+  if null xs
+  then [[]]
+  else xs :: tails (tail xs);
