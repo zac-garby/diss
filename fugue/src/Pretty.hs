@@ -58,22 +58,31 @@ prettyHole bh@(BoundHole i ty env)
     "      wants : " ++ prettyType ty ++
     case relevant bh of
       [] -> ""
-      relevant -> "\n      given ="
-              ++ drop 13 (intercalate ",\n" [ "              " ++ colour 33 (pprintIdent ops id) ++
-                                            " : " ++ prettyScheme t | (id, (t, l)) <- relevant ])
-    ++ case best of
+      relevant -> "\n      given:\n"
+                 ++ intercalate ",\n" [ "        " ++ colour 33 (pprintIdent ops id) ++
+                                        " : " ++ prettyScheme t | (id, (t, l)) <- relevant ]
+    ++ case fits of
          [] -> ""
-         best ->
-           "\n      fits include =\n"
-           ++ intercalate ",\n" [ "              " ++ colour 33 (pprintIdent ops id) ++
-                                           " : " ++ prettyScheme t | (id, (t, l)) <- take 5 best ]
-    ++ case viable of
-         [] -> ""
-         viable -> "\n      half-fits include =\n"
-                  ++ intercalate ",\n" [ "              " ++ colour 90 (pprintIdent ops id) ++
-                                         " : " ++ prettyScheme t | (id, (t, l)) <- take 3 viable ]
-  where (best, viable) = possibleFits bh
-              
+         fits ->
+           "\n      fits include:\n"
+           ++ intercalate ",\n" (map prettyFit (take 3 fits))
+           ++ if length fits > 3
+              then colour 90 $ "\n        ... (" ++ show (length fits - 3) ++ " more) ..."
+              else ""
+           
+  where fits = possibleFits bh
+
+prettyFit :: Fit -> String
+prettyFit (Fit id args sch) =
+  "        " ++ colour 33 (pprintIdent ops id) ++ -- identifier of function
+  concat [ colour 92 (" x" ++ show i) | (i, _) <- zip [0..] args ] ++ -- any arguments, arbitrary names
+  " : " ++ prettyScheme sch ++ -- principal type
+  case args of -- if exist, argument types
+    [] -> ""
+    args -> "\n" ++ intercalate ",\n" [ "          " ++ colour 92 ("x" ++ show i) ++
+                                       " : " ++ prettyType t
+                                     | (i, t) <- zip [0..] args ]
+                         
 bracketType :: Type -> String
 bracketType t@(TyConstr "→" _) = "(" ++ prettyType t ++ ")"
 bracketType t = prettyType t

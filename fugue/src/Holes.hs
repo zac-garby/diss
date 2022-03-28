@@ -1,4 +1,5 @@
 module Holes ( BoundHole (..)
+             , Fit (..)
              , relevant
              , possibleFits ) where
 
@@ -17,14 +18,44 @@ relevant :: BoundHole -> Env
 relevant (BoundHole _ _ env) = reverse $ nubBy (\(i, _) (j, _) -> i == j)
            [ (id, (t, l)) | (id, (t, l)) <- env, l == Local ]
 
-possibleFits :: BoundHole -> (Env, Env)
-possibleFits (BoundHole _ t env) = (unique best, unique viable)
+data Fit = Fit { id :: Ident
+               , args :: [Type]
+               , scheme :: Scheme }
+           deriving (Eq, Show)
+
+possibleFits :: BoundHole -> [Fit]
+possibleFits (BoundHole _ t env) = map snd $ sortOn fst $ map specialise $ unique fits
   where sch = finalise t
-        best = filter (\(_, (sch', _)) -> sch' <= sch) env
+        fs = partials env
         
-        -- these fits would involve specialising the type of the hole
-        -- which is not always desirable
-        viable = filter (\(i, (sch', _)) -> sch < sch') env
+        fits = filter (\(Fit i args sch') -> sch' <= sch) fs
+        unique = nubBy (\(Fit i _ _) (Fit j _ _) -> i == j)
 
-        unique = nubBy (\(i, _) (j, _) -> i == j)
+        specialise :: Fit -> (Int, Fit)
+        specialise (Fit i args sch') = (complexity s, Fit i (map (sub s) args) sch)
+          where s = mkSubst sch' sch
 
+        complexity :: Subst -> Int
+        complexity [] = 0
+        complexity ((v, t):rest) = c t + complexity rest
+          where c (TyVar _) = 1
+                c (TyConstr _ ts) = 1 + sum (map c ts)
+                c (TyHole _) = 1
+
+        mkSubst (Forall vs1 t1) (Forall vs2 t2) = subst t1 t2
+          where subst (TyVar a) t2
+                  | a `elem` vs1 = [(a, t2)]
+                subst (TyConstr c1 ts1) (TyConstr c2 ts2)
+                  | c1 == c2 = concat [ subst t1 t2 | (t1, t2) <- zip ts1 ts2 ]
+                subst h@(TyHole i) t2 = [(show h, t2)]
+                subst _ _ = []
+
+        partials :: Env -> [Fit]
+        partials env = go [ Fit i [] t | (i, (t, _)) <- env ]
+          where go ps = case ps >>= app of
+                  [] -> ps
+                  ps' -> ps ++ go ps'
+  
+                app (Fit i as (Forall vs (TyConstr "→" [a, b])))
+                  = [Fit i (as ++ [a]) (Forall vs b)]
+                app _ = []
