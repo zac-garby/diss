@@ -1,7 +1,7 @@
 module Holes ( BoundHole (..)
              , Fit (..)
              , relevant
-             , possibleFits ) where
+             , viableFits ) where
 
 import Data.List
 
@@ -23,8 +23,8 @@ data Fit = Fit { id :: Ident
                , scheme :: Scheme }
            deriving (Eq, Show)
 
-possibleFits :: BoundHole -> [Fit]
-possibleFits (BoundHole _ t env) = map snd $ sortOn fst $ map specialise $ unique fits
+viableFits :: BoundHole -> [Fit]
+viableFits (BoundHole _ t env) = map snd $ sortOn fst $ map specialise $ unique fits
   where sch = finalise t
         fs = partials env
         

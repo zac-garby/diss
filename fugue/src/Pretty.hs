@@ -55,31 +55,30 @@ prettyEnv env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (pprin
 prettyHole :: BoundHole -> String
 prettyHole bh@(BoundHole i ty env)
   = "    hole " ++ colour 33 (show i) ++ ":\n" ++
-    "      wants : " ++ prettyType ty ++
+    "    | wants : " ++ prettyType ty ++
     case relevant bh of
       [] -> ""
-      relevant -> "\n      given:\n"
-                 ++ intercalate ",\n" [ "        " ++ colour 33 (pprintIdent ops id) ++
+      relevant -> "\n    | given:\n"
+                 ++ intercalate ",\n" [ "    |   " ++ colour 33 (pprintIdent ops id) ++
                                         " : " ++ prettyScheme t | (id, (t, l)) <- relevant ]
-    ++ case fits of
+    ++ case viableFits bh of
          [] -> ""
          fits ->
-           "\n      fits include:\n"
+           "\n    | fits include:\n"
            ++ intercalate ",\n" (map prettyFit (take 3 fits))
            ++ if length fits > 3
-              then colour 90 $ "\n        ... (" ++ show (length fits - 3) ++ " more) ..."
+              then "\n    | " ++ colour 90 ("  ... (" ++ show (length fits - 3) ++ " more) ...")
               else ""
-           
-  where fits = possibleFits bh
+    ++ "\n    '---"
 
 prettyFit :: Fit -> String
 prettyFit (Fit id args sch) =
-  "        " ++ colour 33 (pprintIdent ops id) ++ -- identifier of function
+  "    |   " ++ colour 33 (pprintIdent ops id) ++ -- identifier of function
   concat [ colour 92 (" x" ++ show i) | (i, _) <- zip [0..] args ] ++ -- any arguments, arbitrary names
   " : " ++ prettyScheme sch ++ -- principal type
   case args of -- if exist, argument types
     [] -> ""
-    args -> "\n" ++ intercalate ",\n" [ "          " ++ colour 92 ("x" ++ show i) ++
+    args -> "\n" ++ intercalate ",\n" [ "    |     " ++ colour 92 ("x" ++ show i) ++
                                        " : " ++ prettyType t
                                      | (i, t) <- zip [0..] args ]
                          
