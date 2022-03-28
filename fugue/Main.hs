@@ -17,10 +17,7 @@ import Eval
 import Env
 import Pretty
 
-data REPLState = REPLState { env :: Environment
-                           , files :: [FilePath] }
-
-type Interactive = ExceptT Error (StateT REPLState IO)
+type Interactive = ExceptT Error (StateT Environment IO)
 
 data Error = TypeErr TypeError
            | SyntaxErr ParseError
@@ -37,7 +34,7 @@ main :: IO ()
 main = do
   putStrLn "fugue v1.0"
   putStrLn "type :h for available commands"
-  evalStateT (runExceptT repl) (REPLState defaultEnv [])
+  evalStateT (runExceptT repl) defaultEnv
   return ()
 
 repl :: Interactive ()
@@ -46,8 +43,8 @@ repl = forever $ do
   liftIO $ hFlush stdout
   l <- liftIO $ getLine
 
-  oldState <- get
-  handleCommand l `catchError` restore oldState
+  oldEnv <- get
+  handleCommand l `catchError` restore oldEnv
 
   liftIO $ putStrLn ""
 
@@ -55,7 +52,6 @@ handleCommand :: String -> Interactive ()
 handleCommand "" = repl
 handleCommand (':':'p':rest) = perf rest
 handleCommand (':':'l':rest) = loadFiles (words rest)
-handleCommand (':':'r':rest) = reload
 handleCommand (':':'b':[])   = search "t"
 handleCommand (':':'b':rest) = search rest
 handleCommand (':':'t':rest) = checkType rest
@@ -72,7 +68,7 @@ handleInput s = do
 handleExpr :: Expr -> Interactive ()
 handleExpr t = do
   sch <- typecheckTerm t
-  env <- gets env
+  env <- get
   term <- compile (fromEnvironment env) t ?? CompileErr
   
   liftIO $ do
@@ -87,28 +83,22 @@ perf s = do
   liftIO $ putStrLn $ "  (finished in " ++ show (diffUTCTime end start) ++ ")"
 
 loadFiles :: [String] -> Interactive ()
-loadFiles fs = do  
+loadFiles fs = do
   forM_ fs $ \f -> do
     let fn = f ++ ".fugue"
     exist <- liftIO $ doesFileExist fn
     if exist then
-      loadFile f
+      loadFile fn
     else
       throwError fn ?? FileErr
 
-  liftIO $ putStrLn $ "  loaded " ++ show (length fs) ++ " file(s): "
-                   ++ intercalate ", " fs
-
-reload :: Interactive ()
-reload = do
-  fs <- gets files
-  loadFiles fs
+  liftIO $ putStrLn $ "  loaded " ++ show (length fs) ++ " file(s)"
 
 search :: String -> Interactive ()
 search s = do
   ty <- parseType "<repl>" s ?? SyntaxErr
   let sch = finalise ty
-  env <- gets env
+  env <- get
   let matches = filter (\(name, (sch', _)) -> sch <= sch' || sch' <= sch) env
 
   liftIO $ case matches of
@@ -125,7 +115,6 @@ help :: Interactive ()
 help = liftIO $ do
   putStrLn "  Usage"
   putStrLn "    :l <file1> <file2> ...  load file(s)"
-  putStrLn "    :r                      reload all loaded files"
   putStrLn "    :b                      browse entire environment"
   putStrLn "    :b <type>               search the environment"
   putStrLn "    :t                      derive the type of a term"
@@ -134,29 +123,26 @@ help = liftIO $ do
 
 typecheckTerm :: Expr -> Interactive Scheme
 typecheckTerm t = do
-  env <- gets (fromEnvironment . env)
+  env <- gets fromEnvironment
   typecheck env t ?? TypeErr
 
 loadFile :: String -> Interactive ()
 loadFile file = do
-  let fn = file ++ ".fugue"
-  modify $ \s -> s { files = files s ++ [file] }
-  s <- liftIO $ readFile fn
-  p <- parseProgram fn s ?? SyntaxErr
+  s <- liftIO $ readFile file
+  p <- parseProgram file s ?? SyntaxErr
   typecheckProgram p
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
   let (types, defs) = programParts prog
   forM_ defs $ \(name, t) -> do
-    env <- gets env
-    let environment = fromEnvironment env
+    env <- gets fromEnvironment
     let t' = case lookup name types of
                Just ty -> TypeSpec (LetRec name t (Var name)) ty
                Nothing -> LetRec name t (Var name)
-    sch <- typecheck environment t' ?? TypeErr
-    term <- compile environment t' ?? CompileErr
-    modify $ \s -> s { env = insertKV name (sch, term) env }
+    sch <- typecheck env t' ?? TypeErr
+    term <- compile env t' ?? CompileErr
+    modify (insertKV name (sch, term))
 
 -- splits a program into (all type defs, all term defs)
 programParts :: Program -> ([(Ident, Type)], [(Ident, Expr)])
@@ -164,11 +150,11 @@ programParts [] = ([], [])
 programParts (d@(Definition n t):ds) = ([], [(n, t)]) `mappend` programParts ds
 programParts (d@(TypeDefinition n t):ds) = ([(n, t)], []) `mappend` programParts ds
 
-restore :: REPLState -> Error -> Interactive ()
-restore oldState err = do
+restore :: Environment -> Error -> Interactive ()
+restore oldEnv err = do
   liftIO $ putStrLn "  error:"
   liftIO $ putStrLn $ "  • " ++ show err
-  modify $ \s -> s { env = env oldState }
+  put oldEnv
 
 printTerm :: Term -> IO ()
 printTerm t = case prettyTerm t of
