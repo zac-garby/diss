@@ -61,12 +61,18 @@ prettyHole bh@(BoundHole i ty env)
       relevant -> "\n      given ="
               ++ drop 13 (intercalate ",\n" [ "              " ++ colour 33 (pprintIdent ops id) ++
                                             " : " ++ prettyScheme t | (id, (t, l)) <- relevant ])
-    ++
-    case possibleFits bh of
-      [] -> ""
-      fits -> "\n      fits include ="
-             ++ drop 20 (intercalate ",\n" [ "                     " ++ colour 33 (pprintIdent ops id) ++
-                                           " : " ++ prettyScheme t | (id, (t, l)) <- take 5 fits ])
+    ++ case best of
+         [] -> ""
+         best ->
+           "\n      fits include =\n"
+           ++ intercalate ",\n" [ "              " ++ colour 33 (pprintIdent ops id) ++
+                                           " : " ++ prettyScheme t | (id, (t, l)) <- take 5 best ]
+    ++ case viable of
+         [] -> ""
+         viable -> "\n      half-fits include =\n"
+                  ++ intercalate ",\n" [ "              " ++ colour 90 (pprintIdent ops id) ++
+                                         " : " ++ prettyScheme t | (id, (t, l)) <- take 3 viable ]
+  where (best, viable) = possibleFits bh
               
 bracketType :: Type -> String
 bracketType t@(TyConstr "→" _) = "(" ++ prettyType t ++ ")"

@@ -1,0 +1,5 @@
+map : (a -> b) -> [a] -> [b];
+map f xs =
+  if null xs
+  then []
+  else map ? ?;

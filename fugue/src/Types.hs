@@ -69,6 +69,9 @@ instance Ord Scheme where
           subst h@(TyHole i) t2 = [(show h, t2)]
           subst _ _ = []
 
+  a < b = a <= b && not (b <= a)
+  a > b = b < a
+
 instance Ord Type where
   t1 <= t2 = Forall [] t1 <= Forall [] t2
 
