@@ -11,6 +11,7 @@ type Environment = [(String, (Scheme, Term))]
 
 a = TyVar "a"
 b = TyVar "b"
+c = TyVar "c"
 
 defaultEnv :: Environment
 defaultEnv = [ ("__add", intBinOp (+))
@@ -36,7 +37,17 @@ defaultEnv = [ ("__add", intBinOp (+))
              , ("chr", ( finalise $ tyInt --> tyChar
                        , toTerm chr ))
              , ("ord", ( finalise $ tyChar --> tyInt
-                       , toTerm ord )) ]
+                       , toTerm ord ))
+             , ("fst", ( finalise $ tyTuple [a, b] --> a
+                       , CBuiltin WHNF $ \(CTuple [t, _]) -> t ))
+             , ("snd", ( finalise $ tyTuple [a, b] --> b
+                       , CBuiltin WHNF $ \(CTuple [_, t]) -> t ))
+             , ("fst3", ( finalise $ tyTuple [a, b, c] --> a
+                        , CBuiltin WHNF $ \(CTuple [t,_,_]) -> t))
+             , ("snd3", ( finalise $ tyTuple [a, b, c] --> b
+                        , CBuiltin WHNF $ \(CTuple [_,t,_]) -> t))
+             , ("trd3", ( finalise $ tyTuple [a, b, c] --> c
+                        , CBuiltin WHNF $ \(CTuple [_,_,t]) -> t)) ]
 
 intBinOp :: (Int -> Int -> Int) -> (Scheme, Term)
 intBinOp f = ( finalise $ tyInt --> tyInt --> tyInt
