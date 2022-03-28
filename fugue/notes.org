@@ -19,3 +19,5 @@
   Simple syntax & semantics compared to GHC, nice as an embedded language for example. Also pure.
 
   Nice example for fitting: =sortOn (comparing ?) ["Hello", "world"]=
+* Rigid & non-rigid variables
+  e.g. =zipWith ? [1, 2] [3, 4]= doesn't suggest =(+)= because it wants to be of type =a=.
