@@ -20,3 +20,17 @@ sortOn lte xs =
 	   sortOn lte left ++ [hd] ++ sortOn lte right;
 
 sort = sortOn (<=);
+
+lexicographic : [Char] -> [Char] -> Bool;
+lexicographic xs ys =
+  if null xs
+  then True
+  else if null ys
+  	   then False
+	   else let x = ord (head xs) in
+	   		let y = ord (head ys) in
+			if x < y
+			then True
+			else if y < x
+				 then False
+				 else lexicographic (tail xs) (tail ys);
