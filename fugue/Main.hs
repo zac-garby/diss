@@ -102,7 +102,7 @@ search s = do
   let matches = filter (\(name, (sch', _)) -> sch <= sch' || sch' <= sch) env
 
   liftIO $ case matches of
-    [] -> putStrLn $ "  no matches found for " ++ show sch
+    [] -> putStrLn $ "  no matches found for " ++ prettyScheme sch
     matches -> putStrLn $ prettyEnv matches
 
 checkType :: String -> Interactive ()
