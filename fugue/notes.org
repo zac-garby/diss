@@ -21,3 +21,6 @@
   Nice example for fitting: =sortOn (comparing ?) ["Hello", "world"]=
 * Rigid & non-rigid variables
   e.g. =zipWith ? [1, 2] [3, 4]= doesn't suggest =(+)= because it wants to be of type =a=.
+
+
+  In hole "fit includes" sections, could potentially prioritise fits where each of the fit's arguments exist (at least by type) in the local environment.
