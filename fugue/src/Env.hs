@@ -18,6 +18,7 @@ defaultEnv = [ ("__add", intBinOp (+))
              , ("__sub", intBinOp (-))
              , ("__mul", intBinOp (*))
              , ("__div", intBinOp div)
+             , ("__mod", intBinOp mod)
              , ("__eq", ( finalise $ a --> a --> tyBool
                         , CBuiltin Full $ \x ->
                             CBuiltin Full $ \y -> toTerm (x == y)))

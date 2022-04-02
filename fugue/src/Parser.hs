@@ -63,13 +63,15 @@ type Operators = [(Associativity, [(Ident, Ident)])]
 -- the operators, listed from lowest to highest precedence
 ops :: Operators
 ops = [ (RightAssoc, [ ("$", "__apply") ])
-      , (LeftAssoc,  [ ("==", "__eq") ])
+      , (LeftAssoc,  [ ("||", "__or") ])
+      , (LeftAssoc,  [ ("&&", "__and") ])
+      , (LeftAssoc,  [ ("=/=", "__neq"), ("==", "__eq") ])
       , (LeftAssoc,  [ ("<=", "__lte"), (">=", "__gte"), ("<", "__lt"), (">", "__gt") ])
       , (LeftAssoc,  [ ("!", "__index") ])
       , (RightAssoc, [ ("::", "__cons") ])
       , (RightAssoc, [ (".", "__comp") ])
       , (LeftAssoc,  [ ("++", "__app"), ("+", "__add"), ("-", "__sub") ])
-      , (LeftAssoc,  [ ("*", "__mul"), ("/", "__div") ]) ]
+      , (LeftAssoc,  [ ("*", "__mul"), ("/", "__div"), ("%", "__mod") ]) ]
 
 allOps :: Operators -> [(Ident, Ident)]
 allOps ops = concat [ os | (_, os) <- ops ]
