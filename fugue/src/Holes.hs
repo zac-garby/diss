@@ -4,6 +4,7 @@ module Holes ( BoundHole (..)
              , viableFits ) where
 
 import Data.List
+import Debug.Trace
 
 import Parser
 import Types
@@ -25,11 +26,11 @@ data Fit = Fit { id :: Ident
 
 viableFits :: BoundHole -> [Fit]
 viableFits (BoundHole _ t env) = map snd $ sortOn fst $ map specialise $ unique fits
-  where sch = finalise t
+  where sch = Forall [] t
         fs = partials env
         
         fits = filter (\(Fit i args sch') -> sch' <= sch) fs
-        unique = nubBy (\(Fit i _ _) (Fit j _ _) -> i == j)
+        unique = nubBy (\(Fit i xs _) (Fit j ys _) -> i == j && length xs == length ys)
 
         specialise :: Fit -> (Int, Fit)
         specialise (Fit i args sch') = (complexity s, Fit i (map (sub s) args) sch)

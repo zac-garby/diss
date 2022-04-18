@@ -58,7 +58,7 @@ tyString = tyList tyChar
 
 infixr 2 -->
 (-->) :: Type -> Type -> Type
-a --> b = TyConstr "→" [a, b]
+a --> b = TyConstr "->" [a, b]
 
 instance Ord Scheme where
   Forall vs1 t1 <= Forall vs2 t2 = sub (subst t1 t2) t1 == t2
@@ -73,7 +73,7 @@ instance Ord Scheme where
   a > b = b < a
 
 instance Ord Type where
-  t1 <= t2 = finalise t1 <= finalise t2
+  t1 <= t2 = Forall [] t1 <= Forall [] t2
 
 instance Functor GenericType where
   fmap f (TyVar v) = TyVar (f v)
@@ -87,7 +87,7 @@ instance Foldable GenericType where
 
 instance Show (GenericType String) where
   show (TyVar v) = v
-  show (TyConstr "→" [l,r]) = bracketType l ++ " → " ++ show r
+  show (TyConstr "->" [l,r]) = bracketType l ++ " → " ++ show r
   show (TyConstr "List" [t]) = "[" ++ show t ++ "]"
   show (TyConstr "Tuple" xs) = "(" ++ intercalate ", " (map show xs) ++ ")"
   show (TyConstr c []) = c
@@ -95,7 +95,7 @@ instance Show (GenericType String) where
   show (TyHole i) = "¿" ++ show i ++ "?"
   
 bracketType :: Type -> String
-bracketType t@(TyConstr "→" _) = "(" ++ show t ++ ")"
+bracketType t@(TyConstr "->" _) = "(" ++ show t ++ ")"
 bracketType t = show t
 
 data BindingLocality = Local | Global

@@ -35,7 +35,7 @@ prettyTerm _ = Nothing
 prettyType :: Type -> String
 prettyType (TyVar v) = colour (92 + m) v
   where m = (sum (map ord v) - ord 'a') `mod` 5
-prettyType (TyConstr "→" [l,r]) = bracketType l ++ " → " ++ prettyType r
+prettyType (TyConstr "->" [l,r]) = bracketType l ++ " → " ++ prettyType r
 prettyType (TyConstr "List" [t]) = "[" ++ prettyType t ++ "]"
 prettyType (TyConstr "Tuple" xs) = "(" ++ intercalate ", " (map prettyType xs) ++ ")"
 prettyType (TyConstr c []) = colour 32 c

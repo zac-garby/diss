@@ -246,7 +246,7 @@ typeAs (App f x) t = do
   typeAs f (tx --> t)
   typeAs x tx
 
-typeAs (Abs x b) (TyConstr "→" [t1, t2]) = do
+typeAs (Abs x b) (TyConstr "->" [t1, t2]) = do
   with (x, Forall [] t1) $ typeAs b t2
 
 typeAs (Abs x b) t = do
