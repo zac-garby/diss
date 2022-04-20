@@ -83,7 +83,7 @@ prettyFit (Fit id args sch) =
                                      | (i, t) <- zip [0..] args ]
                          
 bracketType :: Type -> String
-bracketType t@(TyConstr "→" _) = "(" ++ prettyType t ++ ")"
+bracketType t@(TyConstr "->" _) = "(" ++ prettyType t ++ ")"
 bracketType t = prettyType t
 
 colour :: Int -> String -> String

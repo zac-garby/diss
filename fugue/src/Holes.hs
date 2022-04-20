@@ -57,6 +57,6 @@ viableFits (BoundHole _ t env) = map snd $ sortOn fst $ map specialise $ unique 
                   [] -> ps
                   ps' -> ps ++ go ps'
   
-                app (Fit i as (Forall vs (TyConstr "→" [a, b])))
+                app (Fit i as (Forall vs (TyConstr "->" [a, b])))
                   = [Fit i (as ++ [a]) (Forall vs b)]
                 app _ = []

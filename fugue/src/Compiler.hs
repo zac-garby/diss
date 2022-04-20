@@ -70,9 +70,6 @@ compile :: Env -> Expr -> Except CompilerError Term
 compile env e = runReaderT (fromExpr e) names
   where names = map fst env
 
-runCompiler :: Compiler a -> Either CompilerError a
-runCompiler c = runExcept (runReaderT c [])
-
 fromExpr :: Expr -> Compiler Term
 
 fromExpr (Var v) = do
