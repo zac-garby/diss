@@ -1,0 +1,5 @@
+f : (a -> b) -> [a] -> [a];
+f g xs =
+  if null xs
+  then []
+  else g (head xs) :: f g (tail xs);
