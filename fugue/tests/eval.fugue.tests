@@ -1,0 +1,302 @@
+1 + 2 * 3 + 4
+11
+
+3 * (2 - 4)
+-6
+
+1 :: 2 :: 3 :: []
+[1, 2, 3]
+
+id 5
+5
+
+id True
+True
+
+not True
+False
+
+not False
+True
+
+flip (-) 1 2
+1
+
+head (flip (::) "ello" 'h')
+'h'
+
+const "foo" "bar"
+"foo"
+
+True && True
+True
+
+True && False
+False
+
+False && True
+False
+
+False && False
+False
+
+True || True
+True
+
+True || False
+True
+
+False || True
+True
+
+False || False
+False
+
+curry fst 1 2
+1
+
+curry snd 1 2
+2
+
+uncurry (::) (1, [2, 3])
+[1, 2, 3]
+
+neg 5
+-5
+
+max 1 2
+2
+
+max 4 10
+10
+
+max 6 3
+6
+
+min 1 2
+1
+
+min 4 10
+4
+
+min 6 3
+3
+
+succ 2
+3
+
+succ -1
+0
+
+pred 2
+1
+
+pred -1
+-2
+
+abs 5
+5
+
+abs 0
+0
+
+abs -5
+5
+
+sign 5
+1
+
+sign 0
+0
+
+sign -5
+-1
+
+sign (sign 10)
+1
+
+even 2
+True
+
+even 4
+True
+
+even 3
+False
+
+odd 2
+False
+
+odd 4
+False
+
+odd 3
+True
+
+"foo" ++ "bar" ++ "baz"
+"foobarbaz"
+
+[1, 2, 3] ! 1
+2
+
+reverse "hello"
+"olleh"
+
+reverse (range 1 5)
+[5, 4, 3, 2, 1]
+
+reverse (reverse "foo")
+"foo"
+
+take 2 (range 1 5)
+[1, 2]
+
+drop 2 (range 1 5)
+[3, 4, 5]
+
+span (\x -> x < 3) (range 1 5)
+([1, 2], [3, 4, 5])
+
+takeWhile (\x -> x < 3) (range 1 5)
+[1, 2]
+
+dropWhile (\x -> x < 3) (range 1 5)
+[3, 4, 5]
+
+elem 1 [1, 2, 3]
+True
+
+elem 3 [1, 2, 3]
+True
+
+elem 1 [2, 3, 5]
+False
+
+elem 1 [1, 1, 2, 3]
+True
+
+elem 'e' "hello"
+True
+
+range 1 5
+[1, 2, 3, 4, 5]
+
+range 0 0
+[0]
+
+range 10 11
+[10, 11]
+
+map succ [1, 2, 3]
+[2, 3, 4]
+
+map reverse ["foo", "bar"]
+["oof", "rab"]
+
+reverse (map (\x -> (snd x, fst x)) [(1, 2)])
+[(2, 1)]
+
+(map . map) succ [[1, 2], [3, 4]]
+[[2, 3], [4, 5]]
+
+foldr (+) 0 [1, 2, 3]
+6
+
+foldr (++) "" ["hel", "lo,", " wo", "rld"]
+"hello, world"
+
+foldr (-) 0 [1, 2, 3]
+2
+
+foldl (-) 0 [1, 2, 3]
+-6
+
+foldl (flip takeWhile) [1, 2, 3, 4] [(\x -> x < 5), (\x -> x < 3)]
+[1, 2]
+
+foldl (+) 0 [1, 2, 3]
+6
+
+sum [5, 5]
+10
+
+product [5, 5]
+25
+
+length "foo"
+3
+
+length [[1, 2], [3, 4]]
+2
+
+length []
+0
+
+zipWith (+) [1, 2, 3] [4, 5, 6]
+[5, 7, 9]
+
+zipWith (\x y -> (x, y)) "foo" "bar"
+[('f', 'b'), ('o', 'a'), ('o', 'r')]
+
+zipWith (\x y -> (x, y)) [1, 2] [3, 4, 5, 6]
+[(1, 3), (2, 4)]
+
+unzip [(1, 3), (2, 4)]
+([1, 2], [3, 4])
+
+enumerate "hello"
+[(0, 'h'), (1, 'e'), (2, 'l'), (3, 'l'), (4, 'o')]
+
+enumerate (enumerate [1, 2, 3])
+[(0, (0, 1)), (1, (1, 2)), (2, (2, 3))]
+
+filter even (range 1 10)
+[2, 4, 6, 8, 10]
+
+filter odd (range 1 10)
+[1, 3, 5, 7, 9]
+
+filter (\x -> ord x > 32) "hello the world"
+"hellotheworld"
+
+init "foo"
+"fo"
+
+init [1, 2, 3, 4]
+[1, 2, 3]
+
+last "foo"
+'o'
+
+last [1, 2, 3, 4]
+4
+
+tails "foo"
+["foo", "oo", "o", []]
+
+concat ["a", "b", "c"]
+"abc"
+
+concat [[1 + 2, 3], [4, 5]]
+[3, 3, 4, 5]
+
+maximum [3, 2, 1]
+3
+
+maximum [1, 2, 3]
+3
+
+minimum [3, 2, 1]
+1
+
+minimum [1, 2, 3]
+1
+
+lookup "x" [("x", True), ("y", False)]
+[True]
+
+lookup "x" [("x", True), ("x", False)]
+[True]
+
+lookup 2 (enumerate "hello")
+"l"
