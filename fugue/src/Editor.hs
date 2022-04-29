@@ -5,7 +5,7 @@ import Data.Maybe
 import Data.List
 import Types
 import Parser (Ident)
--- import Control.Monad.State
+import Graphics.Vty hiding (Cursor)
 
 import qualified Parser as P
 
@@ -45,7 +45,7 @@ data Cursor = CExpr Expr
             deriving (Show, Eq)
 
 data Location = At Cursor [Crumb]
-            deriving Show
+            deriving (Eq, Show)
 
 e1 = App [Abs ["x", "y", "z"] (Var "x"), LitInt 1, LitInt 2, LitInt 3]
 e2 = LitList [LitInt 1, LitInt 2, LitInt 3]
@@ -54,10 +54,9 @@ e3 = LitTuple [LitInt 1, LitInt 2, LitInt 3]
 edit :: Expr -> Location
 edit e = At (CExpr e) []
 
-top :: Location -> Maybe Expr
-top (At (CExpr e) []) = return e
-top (At (CName x) []) = Nothing
-top e              = up e >>= top
+top :: Location -> Maybe Location
+top ed@(At _ []) = return ed
+top e            = up e >>= top
 
 goto :: Command -> Location -> Maybe Location
 goto (GotoIndex i)  (At (CExpr (App es)) cs) | length es > i
@@ -139,6 +138,15 @@ next ed@(At _ (c : cs)) = up ed >>= goto (case c of
   InTuple pre []       -> GotoIndex 0
   InTuple pre post     -> GotoIndex (length pre + 1))
 
+prev :: Location -> Maybe Location
+prev (At _ []) = Nothing
+prev ed = go ed
+  where go ed' = do
+          n <- next ed'
+          if n == ed
+            then return ed'
+            else go n
+
 remove :: Location -> Maybe Location
 remove = replace f g
   where f Hole = []
@@ -148,7 +156,6 @@ remove = replace f g
         g _ = [""]
 
 replace :: (Expr -> [Expr]) -> (Ident -> [Ident]) -> Location -> Maybe Location
--- replace _ _ (At _ []) = Nothing
 replace f _ ed@(At (CExpr e) cs) =
   case f e of
     []       -> deleteItem ed
@@ -178,6 +185,12 @@ replaceExpr f = replace f pure
 
 replaceName :: (Ident -> [Ident]) -> Location -> Maybe Location
 replaceName g = replace pure g
+
+insertHole :: Location -> Maybe Location
+insertHole = replace (\e -> [e, Hole]) (\x -> [x, ""])
+
+insertNext :: Location -> Maybe Location
+insertNext = insertHole >=> next
 
 deleteItem :: Location -> Maybe Location
 deleteItem ed@(At _ cs) = do
@@ -220,22 +233,22 @@ setExpr e = modify (const e) id
 setName :: Ident -> Location -> Maybe Location
 setName x = modify id (const x)
 
-render :: Location -> String
-render (At (CExpr e) cs) = fst (foldl (uncurry renderIn) ("<" ++ showEx e ++ ">", False) cs)
-render (At (CName x) cs) = fst (foldl (uncurry renderIn) ("<" ++ showEx (Var x) ++ ">", False) cs)
+render :: Location -> Image
+render (At (CExpr e) cs) = plain $ fst (foldl (uncurry renderIn) ("<" ++ showEx e ++ ">", False) cs)
+render (At (CName x) cs) = render (At (CExpr (Var x)) cs)
 
 render' = Just . render
 
 renderIn :: String -> Bool -> Crumb -> (String, Bool)
 renderIn s b (InApp p q) = (betweenExprs " " p q (bracket b s), True)
-renderIn s _ (InAbsVar p q b) = ("λ" ++ between " " p q s ++ " → " ++ showEx b, True)
-renderIn s _ (InAbsBody xs) = ("λ" ++ intercalate " " xs ++ " → " ++ s, True)
-renderIn s _ (InLetArg p q v b) = ("let " ++ between " " p q s ++ " = " ++ showEx v ++ " in " ++ showEx b, True)
-renderIn s _ (InLetVal xs b) = ("let " ++ intercalate " " xs ++ " = " ++ s ++ " in " ++ showEx b, True)
-renderIn s _ (InLetBody xs v) = ("let " ++ intercalate " " xs ++ " = " ++ showEx v ++ " in " ++ s, True)
-renderIn s _ (InLetRecArg p q v b) = ("let rec " ++ between " " p q s ++ " = " ++ showEx v ++ " in " ++ showEx b, True)
-renderIn s _ (InLetRecVal xs b) = ("let rec " ++ intercalate " " xs ++ " = " ++ s ++ " in " ++ showEx b, True)
-renderIn s _ (InLetRecBody xs v) = ("let rec " ++ intercalate " " xs ++ " = " ++ showEx v ++ " in " ++ s, True)
+renderIn s _ (InAbsVar p q b) = ("λ" ++ betweenArgs " " p q s ++ " → " ++ showEx b, True)
+renderIn s _ (InAbsBody xs) = ("λ" ++ showArgs xs ++ " → " ++ s, True)
+renderIn s _ (InLetArg p q v b) = ("let " ++ betweenArgs " " p q s ++ " = " ++ showEx v ++ " in " ++ showEx b, True)
+renderIn s _ (InLetVal xs b) = ("let " ++ showArgs xs ++ " = " ++ s ++ " in " ++ showEx b, True)
+renderIn s _ (InLetBody xs v) = ("let " ++ showArgs xs ++ " = " ++ showEx v ++ " in " ++ s, True)
+renderIn s _ (InLetRecArg p q v b) = ("let rec " ++ betweenArgs " " p q s ++ " = " ++ showEx v ++ " in " ++ showEx b, True)
+renderIn s _ (InLetRecVal xs b) = ("let rec " ++ showArgs xs ++ " = " ++ s ++ " in " ++ showEx b, True)
+renderIn s _ (InLetRecBody xs v) = ("let rec " ++ showArgs xs ++ " = " ++ showEx v ++ " in " ++ s, True)
 renderIn s _ (InIfCond t f) = ("if " ++ s ++ " then " ++ showEx t ++ " else " ++ showEx f, True)
 renderIn s _ (InIfTrue c f) = ("if " ++ showEx c ++ " then " ++ s ++ " else " ++ showEx f, True)
 renderIn s _ (InIfFalse c t) = ("if " ++ showEx c ++ " then " ++ showEx t ++ " else " ++ s, True)
@@ -246,9 +259,9 @@ showEx :: Expr -> String
 showEx (Var "") = "..."
 showEx (Var x) = x
 showEx (App es) = intercalate " " (map br es)
-showEx (Abs xs e) = "λ" ++ intercalate " " xs ++ " → " ++ showEx e
-showEx (Let xs v b) = "let " ++ intercalate " " xs ++ " = " ++ showEx v ++ " in " ++ showEx b
-showEx (LetRec xs v b) = "let rec " ++ intercalate " " xs ++ " = " ++ showEx v ++ " in " ++ showEx b
+showEx (Abs xs e) = "λ" ++ showArgs xs ++ " → " ++ showEx e
+showEx (Let xs v b) = "let " ++ showArgs xs ++ " = " ++ showEx v ++ " in " ++ showEx b
+showEx (LetRec xs v b) = "let rec " ++ showArgs xs ++ " = " ++ showEx v ++ " in " ++ showEx b
 showEx (If c t f) = "if " ++ showEx c ++ " then " ++ showEx t ++ " else " ++ showEx f
 showEx (LitInt n) = show n
 showEx (LitBool b) = show b
@@ -259,11 +272,17 @@ showEx (LitChar c) = show c
 showEx (TypeSpec e t) = showEx e ++ " : " ++ show t
 showEx Hole = "_"
 
+showArgs :: [Ident] -> String
+showArgs = intercalate " " . map (showEx . Var)
+
 between :: String -> [String] -> [String] -> String -> String
 between sep p q x = intercalate sep (p ++ [x] ++ q)
 
 betweenExprs :: String -> [Expr] -> [Expr] -> String -> String
 betweenExprs sep p q = between sep (map br p) (map br q)
+
+betweenArgs :: String -> [String] -> [String] -> String -> String
+betweenArgs sep p q = between sep (map (showEx . Var) p) (map (showEx . Var) q)
 
 bracket :: Bool -> String -> String
 bracket True s = "(" ++ s ++ ")"
@@ -281,5 +300,9 @@ needsBracket _ = False
 br :: Expr -> String
 br e = bracket (needsBracket e) (showEx e)
 
-test :: Maybe Location -> IO ()
-test l = putStrLn . fromMaybe "no result" $ l >>= render'
+-- test :: Maybe Location -> IO ()
+-- test l = putStrLn . fromMaybe "no result" $ l >>= render'
+
+normal = defAttr
+
+plain = string normal

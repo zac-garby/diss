@@ -8,6 +8,7 @@ import Text.Parsec (ParseError)
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
+import Graphics.Vty hiding (Cursor)
 
 import Parser
 import Types
@@ -16,8 +17,10 @@ import Compiler
 import Eval
 import Env
 import Pretty
+import Editor
 
 type Interactive = ExceptT Error (StateT Environment IO)
+type Editor = ExceptT Error (StateT Location IO)
 
 data Error = TypeErr TypeError
            | SyntaxErr ParseError
@@ -31,12 +34,49 @@ instance Show Error where
   show (FileErr fp) = "file '" ++ fp ++ "' does not exist"
 
 main :: IO ()
-main = do
-  putStrLn "fugue v1.0"
-  putStrLn "type :h for available commands"
-  evalStateT (runExceptT repl) defaultEnv
-  return ()
+main = interactive
 
+interactive :: IO ()
+interactive = do
+  cfg <- standardIOConfig
+  vty <- mkVty cfg
+  evalStateT (runExceptT (loop vty)) (edit e1)
+  shutdown vty
+
+loop :: Vty -> Editor ()
+loop vty = do
+  s <- get
+  
+  let img = render s
+      pic = picForImage img
+      
+  e <- liftIO $ do
+    update vty pic
+    nextEvent vty
+    
+  case e of
+    EvKey KEsc _ -> return ()
+    EvKey (KChar 'q') _ -> return ()
+    EvKey k ms -> do
+      case k of
+        KDown -> send down
+        KUp -> if MShift `elem` ms then send top else send up
+        KRight -> send next
+        KLeft -> send prev
+        KChar '\t' -> send next
+        KChar ' ' -> send insertNext
+        KBS -> send remove
+        _ -> return ()
+      loop vty
+
+send :: (Location -> Maybe Location) -> Editor ()
+send f = do
+  s <- get
+  case f s of
+    Nothing -> return ()
+    Just s' -> put s'
+
+{-
 repl :: Interactive ()
 repl = forever $ do
   liftIO $ putStr "► "
@@ -177,3 +217,4 @@ envTerms emt = [ t | (_, (_, t)) <- emt ]
 e ?? f = case runExcept e of
   Left err -> throwError (f err)
   Right val -> return val
+-}
