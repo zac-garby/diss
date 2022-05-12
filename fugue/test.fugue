@@ -1,5 +1,12 @@
-map : (a -> b) -> [a] -> [b];
-map f xs =
-  if null xs
-  then []
-  else map ? ?;
+
+
+
+-- a function which returns the smallest integer
+-- in a list of integers.
+
+minimum : [Int] -> Int;
+minimum xs =
+  if length xs == 1
+  then head xs
+  else min (head xs) ?;
+

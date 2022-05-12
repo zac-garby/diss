@@ -29,6 +29,11 @@ data TypeError = UnifyInfiniteError Ident Type
                | UnboundVariableError Ident
                | FoundHoles Scheme [BoundHole]
 
+typecheck :: Env -> Expr -> Except TypeError Scheme
+typecheck e expr = do
+  (sch, cs) <- runInfer e (inferScheme expr)
+  return sch
+
 type Infer = RWST
   Env                -- typing environment
   [Constraint]       -- constraints accumulator
@@ -61,7 +66,7 @@ infer (App f x) = do
 infer (Let x e b) = do
   (te, cs) <- listen $ infer e
   s <- lift $ runUnify (solve cs)
-  sch <- local (sub s) (generalise (sub s te)) -- fixed bug: let two = (\n -> add n 1) 1 in two
+  sch <- local (sub s) (generalise (sub s te))
   with (x, sch) (infer b)
 
 infer (LetRec x e b) = do
@@ -182,11 +187,6 @@ v `extend` t | t == TyVar v = return ()
 
 compose :: Subst -> Subst -> Subst
 compose s1 s2 = map (fmap (sub s1)) s2 ++ s1
-
-typecheck :: Env -> Expr -> Except TypeError Scheme
-typecheck e expr = do
-  (sch, cs) <- runInfer e (inferScheme expr)
-  return sch
 
 inferScheme :: Expr -> Infer Scheme
 inferScheme expr = do
