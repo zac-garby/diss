@@ -40,7 +40,7 @@ interactive :: IO ()
 interactive = do
   cfg <- standardIOConfig
   vty <- mkVty cfg
-  evalStateT (runExceptT (loop vty)) (edit e1)
+  evalStateT (runExceptT (loop vty)) (edit e2)
   shutdown vty
 
 loop :: Vty -> Editor ()

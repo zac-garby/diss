@@ -37,7 +37,7 @@ data Expr = Var Ident
           | LitString String
           | LitChar Char
           | TypeSpec Expr Type
-          | Hole
+          | Hole String
           deriving (Show, Eq)
 
 data Cursor = CExpr Expr
@@ -149,8 +149,8 @@ prev ed = go ed
 
 remove :: Location -> Maybe Location
 remove = replace f g
-  where f Hole = []
-        f _ = [Hole]
+  where f (Hole "") = []
+        f _ = [Hole ""]
 
         g "" = []
         g _ = [""]
@@ -187,7 +187,7 @@ replaceName :: (Ident -> [Ident]) -> Location -> Maybe Location
 replaceName g = replace pure g
 
 insertHole :: Location -> Maybe Location
-insertHole = replace (\e -> [e, Hole]) (\x -> [x, ""])
+insertHole = replace (\e -> [e, Hole ""]) (\x -> [x, ""])
 
 insertNext :: Location -> Maybe Location
 insertNext = insertHole >=> next
@@ -234,59 +234,70 @@ setName :: Ident -> Location -> Maybe Location
 setName x = modify id (const x)
 
 render :: Location -> Image
-render (At (CExpr e) cs) = plain $ fst (foldl (uncurry renderIn) ("<" ++ showEx e ++ ">", False) cs)
+render (At (CExpr e) cs) = fst (foldl (uncurry renderIn) (initial, False) cs)
+  where initial = cursor "[" <|> showEx e <|> cursor "]"
 render (At (CName x) cs) = render (At (CExpr (Var x)) cs)
 
 render' = Just . render
 
-renderIn :: String -> Bool -> Crumb -> (String, Bool)
-renderIn s b (InApp p q) = (betweenExprs " " p q (bracket b s), True)
-renderIn s _ (InAbsVar p q b) = ("λ" ++ betweenArgs " " p q s ++ " → " ++ showEx b, True)
-renderIn s _ (InAbsBody xs) = ("λ" ++ showArgs xs ++ " → " ++ s, True)
-renderIn s _ (InLetArg p q v b) = ("let " ++ betweenArgs " " p q s ++ " = " ++ showEx v ++ " in " ++ showEx b, True)
-renderIn s _ (InLetVal xs b) = ("let " ++ showArgs xs ++ " = " ++ s ++ " in " ++ showEx b, True)
-renderIn s _ (InLetBody xs v) = ("let " ++ showArgs xs ++ " = " ++ showEx v ++ " in " ++ s, True)
-renderIn s _ (InLetRecArg p q v b) = ("let rec " ++ betweenArgs " " p q s ++ " = " ++ showEx v ++ " in " ++ showEx b, True)
-renderIn s _ (InLetRecVal xs b) = ("let rec " ++ showArgs xs ++ " = " ++ s ++ " in " ++ showEx b, True)
-renderIn s _ (InLetRecBody xs v) = ("let rec " ++ showArgs xs ++ " = " ++ showEx v ++ " in " ++ s, True)
-renderIn s _ (InIfCond t f) = ("if " ++ s ++ " then " ++ showEx t ++ " else " ++ showEx f, True)
-renderIn s _ (InIfTrue c f) = ("if " ++ showEx c ++ " then " ++ s ++ " else " ++ showEx f, True)
-renderIn s _ (InIfFalse c t) = ("if " ++ showEx c ++ " then " ++ showEx t ++ " else " ++ s, True)
-renderIn s _ (InList p q) = ("[" ++ betweenExprs ", " p q s ++ "]", False)
-renderIn s _ (InTuple p q) = ("(" ++ betweenExprs ", " p q s ++ ")", False)
+renderIn :: Image -> Bool -> Crumb -> (Image, Bool)
+renderIn s b (InApp p q) = (betweenExprs space p q (bracket b s), True)
+renderIn s _ (InAbsVar p q b) = (kw "λ" <|> betweenArgs space p q s <|> kw " → " <|> showEx b, True)
+renderIn s _ (InAbsBody xs) = (kw "λ" <|> showArgs xs <|> kw " → " <|> s, True)
+renderIn s _ (InLetArg p q v b) = (kw "let " <|> betweenArgs space p q s <|> kw " = "
+                                   <|> showEx v <|> kw " in " <|> showEx b, True)
+renderIn s _ (InLetVal xs b) = (kw "let " <|> showArgs xs <|> kw " = " <|> s <|> kw " in " <|> showEx b, True)
+renderIn s _ (InLetBody xs v) = (kw "let " <|> showArgs xs <|> kw " = " <|> showEx v <|> kw " in " <|> s, True)
+renderIn s _ (InLetRecArg p q v b) = (kw "let rec " <|> betweenArgs space p q s <|> kw " = "
+                                      <|> showEx v <|> kw " in " <|> showEx b, True)
+renderIn s _ (InLetRecVal xs b) = (kw "let rec " <|> showArgs xs <|> kw " = " <|> s <|> kw " in " <|> showEx b, True)
+renderIn s _ (InLetRecBody xs v) = (kw "let rec " <|> showArgs xs <|> kw " = " <|> showEx v <|> kw " in " <|> s, True)
+renderIn s _ (InIfCond t f) = (kw "if " <|> s <|> kw " then " <|> showEx t <|> kw " else " <|> showEx f, True)
+renderIn s _ (InIfTrue c f) = (kw "if " <|> showEx c <|> kw " then " <|> s <|> kw " else " <|> showEx f, True)
+renderIn s _ (InIfFalse c t) = (kw "if " <|> showEx c <|> kw " then " <|> showEx t <|> kw " else " <|> s, True)
+renderIn s _ (InList p q) = (atom "[" <|> betweenExprs comma p q s <|> atom "]", False)
+renderIn s _ (InTuple p q) = (atom "(" <|> betweenExprs comma p q s <|> atom ")", False)
 
-showEx :: Expr -> String
-showEx (Var "") = "..."
-showEx (Var x) = x
-showEx (App es) = intercalate " " (map br es)
-showEx (Abs xs e) = "λ" ++ showArgs xs ++ " → " ++ showEx e
-showEx (Let xs v b) = "let " ++ showArgs xs ++ " = " ++ showEx v ++ " in " ++ showEx b
-showEx (LetRec xs v b) = "let rec " ++ showArgs xs ++ " = " ++ showEx v ++ " in " ++ showEx b
-showEx (If c t f) = "if " ++ showEx c ++ " then " ++ showEx t ++ " else " ++ showEx f
-showEx (LitInt n) = show n
-showEx (LitBool b) = show b
-showEx (LitList xs) = "[" ++ intercalate ", " (map showEx xs) ++ "]"
-showEx (LitTuple xs) = "(" ++ intercalate ", " (map showEx xs) ++ ")"
-showEx (LitString s) = "\"" ++ s ++ "\""
-showEx (LitChar c) = show c
-showEx (TypeSpec e t) = showEx e ++ " : " ++ show t
-showEx Hole = "_"
+showEx :: Expr -> Image
+showEx (Var "") = hole "."
+showEx (Var x) = atom x
+showEx (App es) = sepBy space (map br es)
+showEx (Abs xs e) = lambda "λ" <|> showArgs xs <|> kw " → " <|> showEx e
+showEx (Let xs v b) = kw "let " <|> showArgs xs <|> kw " = " <|> showEx v <|> kw " in " <|> showEx b
+showEx (LetRec xs v b) = kw "let rec " <|> showArgs xs <|> kw " = " <|> showEx v <|> kw " in " <|> showEx b
+showEx (If c t f) = kw "if " <|> showEx c <|> kw " then " <|> showEx t <|> kw " else " <|> showEx f
+showEx (LitInt n) = atom (show n)
+showEx (LitBool b) = atom (show b)
+showEx (LitList xs) = atom "[" <|> sepBy comma (map showEx xs) <|> atom "]"
+showEx (LitTuple xs) = atom "(" <|> sepBy comma (map showEx xs) <|> atom ")"
+showEx (LitString s) = atom (show s)
+showEx (LitChar c) = atom (show c)
+showEx (TypeSpec e t) = showEx e <|> kw " : " <|> plain (show t)
+showEx (Hole s) = hole (" " ++ s ++ " ")
 
-showArgs :: [Ident] -> String
-showArgs = intercalate " " . map (showEx . Var)
+showArgs :: [Ident] -> Image
+showArgs = sepBy space . map (showEx . Var)
 
-between :: String -> [String] -> [String] -> String -> String
-between sep p q x = intercalate sep (p ++ [x] ++ q)
+sepBy :: Image -> [Image] -> Image
+sepBy i [] = emptyImage
+sepBy i [x] = x
+sepBy i (x:xs) = x <|> i <|> sepBy i xs
 
-betweenExprs :: String -> [Expr] -> [Expr] -> String -> String
+between :: Image -> [Image] -> [Image] -> Image -> Image
+between sep p q x = sepBy sep (p ++ [x] ++ q)
+
+betweenExprs :: Image -> [Expr] -> [Expr] -> Image -> Image
 betweenExprs sep p q = between sep (map br p) (map br q)
 
-betweenArgs :: String -> [String] -> [String] -> String -> String
+betweenArgs :: Image -> [Ident] -> [Ident] -> Image -> Image
 betweenArgs sep p q = between sep (map (showEx . Var) p) (map (showEx . Var) q)
 
-bracket :: Bool -> String -> String
-bracket True s = "(" ++ s ++ ")"
+bracket :: Bool -> Image -> Image
+bracket True s = punct "(" <|> s <|> punct ")"
 bracket False s = s
+
+comma = plain ", "
+space = plain " "
 
 needsBracket :: Expr -> Bool
 needsBracket e@(App _) = True
@@ -297,12 +308,15 @@ needsBracket e@(If _ _ _) = True
 needsBracket e@(TypeSpec _ _) = True
 needsBracket _ = False
 
-br :: Expr -> String
+br :: Expr -> Image
 br e = bracket (needsBracket e) (showEx e)
-
--- test :: Maybe Location -> IO ()
--- test l = putStrLn . fromMaybe "no result" $ l >>= render'
 
 normal = defAttr
 
 plain = string normal
+atom = string (normal `withForeColor` green)
+kw = string (normal `withForeColor` yellow)
+hole = string (normal `withBackColor` white `withForeColor` black)
+lambda = kw
+punct = plain
+cursor = string (normal `withForeColor` brightCyan)
