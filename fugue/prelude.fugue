@@ -39,7 +39,7 @@ max x y = if x > y then x else y;
 
 min : Int -> Int -> Int;
 min x y = if x < y then x else y;
-.
+
 succ : Int -> Int;
 succ x = x + 1;
 
