@@ -31,7 +31,11 @@ type Ident = String
 
 data Definition = Definition Ident Expr
                 | TypeDefinition Ident Type
+                | DataDefinition Ident [Ident] [DataConstructor]
                 deriving Show
+
+data DataConstructor = DataConstructor Ident [Type]
+  deriving Show
 
 data ReplInput = ReplDef Definition | ReplExpr Expr
   deriving Show
@@ -95,7 +99,7 @@ parseWrapper p f s = case runParser p 0 f s of
   Right a -> return a
 
 program :: Parser Program
-program = sepEndBy (choice [try def, typeDef]) (keyword ";")
+program = sepEndBy (choice [try def, try dataDef, typeDef]) (keyword ";")
 
 replInput :: Parser ReplInput
 replInput = (ReplExpr <$> try expr)
@@ -115,6 +119,23 @@ typeDef = lexeme $ do
   colon
   t <- typeExpr
   return $ TypeDefinition name t
+
+dataDef :: Parser Definition
+dataDef = lexeme $ do
+  keyword "data"
+  name <- ident
+  guard $ isUpper (head name)
+  vars <- sepBy ident whitespace
+  equals
+  constrs <- sepBy dataConstructor (keyword "|")
+  return $ DataDefinition name vars constrs
+
+dataConstructor :: Parser DataConstructor
+dataConstructor = lexeme $ do
+  name <- ident
+  guard $ isUpper (head name)
+  args <- sepBy typeExpr whitespace
+  return $ DataConstructor name args
 
 expr :: Parser Expr
 expr = choice [try typeSpec, op]
@@ -323,7 +344,8 @@ keywords = [ "let"
            , "then"
            , "else"
            , "True"
-           , "False" ]
+           , "False"
+           , "data" ]
 
 mkOpParser :: Parser Expr -> Operators -> Parser Expr
 mkOpParser p [] = p
