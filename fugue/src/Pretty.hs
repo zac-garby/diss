@@ -80,7 +80,7 @@ prettyDataTypes dts = intercalate "\n" $ do
         ++ " = "
         ++ (intercalate " | " $ do
              DataConstructor c args <- cs
-             return $ intercalate " " (colour 32 c : map bracketType args))
+             return $ intercalate " " (colour 32 c : map bracketTypeApp args))
 
 prettyHole :: BoundHole -> String
 prettyHole bh@(BoundHole i ty env)
