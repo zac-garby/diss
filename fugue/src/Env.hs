@@ -1,4 +1,4 @@
-module Env ( Environment
+module Env ( Environment (..)
            , defaultEnv ) where
 
 import Data.Char
@@ -7,48 +7,53 @@ import Types
 import Infer
 import Compiler
 
-type Environment = [(String, (Scheme, Term))]
+data Environment = Environment
+  { terms :: [(String, (Scheme, Term))]
+  , types :: [(String, DataType)] }
 
 a = TyVar "a"
 b = TyVar "b"
 c = TyVar "c"
 
 defaultEnv :: Environment
-defaultEnv = [ ("__add", intBinOp (+))
-             , ("__sub", intBinOp (-))
-             , ("__mul", intBinOp (*))
-             , ("__div", intBinOp div)
-             , ("__mod", intBinOp mod)
-             , ("__eq", ( finalise $ a --> a --> tyBool
-                        , CBuiltin Full $ \x ->
-                            CBuiltin Full $ \y -> toTerm (x == y)))
-             , ("__lt", intCompOp (<))
-             , ("__gt", intCompOp (>))
-             , ("__lte", intCompOp (<=))
-             , ("__gte", intCompOp (>=))
-             , ("head", ( finalise $ tyList a --> a
-                        , CBuiltin WHNF headFn ))
-             , ("tail", ( finalise $ tyList a --> tyList a
-                        , CBuiltin WHNF tailFn ))
-             , ("null", ( finalise $ tyList a --> tyBool
-                        , CBuiltin WHNF nullFn ))
-             , ("__cons", ( finalise $ a --> tyList a --> tyList a
-                        , CBuiltin None $ \h ->
-                            CBuiltin None $ \t -> CCons h t ))
-             , ("chr", ( finalise $ tyInt --> tyChar
-                       , toTerm chr ))
-             , ("ord", ( finalise $ tyChar --> tyInt
-                       , toTerm ord ))
-             , ("fst", ( finalise $ tyTuple [a, b] --> a
-                       , CBuiltin WHNF $ \(CTuple [t, _]) -> t ))
-             , ("snd", ( finalise $ tyTuple [a, b] --> b
-                       , CBuiltin WHNF $ \(CTuple [_, t]) -> t ))
-             , ("fst3", ( finalise $ tyTuple [a, b, c] --> a
-                        , CBuiltin WHNF $ \(CTuple [t,_,_]) -> t))
-             , ("snd3", ( finalise $ tyTuple [a, b, c] --> b
-                        , CBuiltin WHNF $ \(CTuple [_,t,_]) -> t))
-             , ("trd3", ( finalise $ tyTuple [a, b, c] --> c
-                        , CBuiltin WHNF $ \(CTuple [_,_,t]) -> t)) ]
+defaultEnv = Environment
+  [ ("__add", intBinOp (+))
+  , ("__sub", intBinOp (-))
+  , ("__mul", intBinOp (*))
+  , ("__div", intBinOp div)
+  , ("__mod", intBinOp mod)
+  , ("__eq", ( finalise $ a --> a --> tyBool
+             , CBuiltin Full $ \x ->
+                                 CBuiltin Full $ \y -> toTerm (x == y)))
+  , ("__lt", intCompOp (<))
+  , ("__gt", intCompOp (>))
+  , ("__lte", intCompOp (<=))
+  , ("__gte", intCompOp (>=))
+  , ("head", ( finalise $ tyList a --> a
+             , CBuiltin WHNF headFn ))
+  , ("tail", ( finalise $ tyList a --> tyList a
+             , CBuiltin WHNF tailFn ))
+  , ("null", ( finalise $ tyList a --> tyBool
+             , CBuiltin WHNF nullFn ))
+  , ("__cons", ( finalise $ a --> tyList a --> tyList a
+               , CBuiltin None $ \h ->
+                                   CBuiltin None $ \t -> CCons h t ))
+  , ("chr", ( finalise $ tyInt --> tyChar
+            , toTerm chr ))
+  , ("ord", ( finalise $ tyChar --> tyInt
+            , toTerm ord ))
+  , ("fst", ( finalise $ tyTuple [a, b] --> a
+            , CBuiltin WHNF $ \(CTuple [t, _]) -> t ))
+  , ("snd", ( finalise $ tyTuple [a, b] --> b
+            , CBuiltin WHNF $ \(CTuple [_, t]) -> t ))
+  , ("fst3", ( finalise $ tyTuple [a, b, c] --> a
+             , CBuiltin WHNF $ \(CTuple [t,_,_]) -> t))
+  , ("snd3", ( finalise $ tyTuple [a, b, c] --> b
+             , CBuiltin WHNF $ \(CTuple [_,t,_]) -> t))
+  , ("trd3", ( finalise $ tyTuple [a, b, c] --> c
+             , CBuiltin WHNF $ \(CTuple [_,_,t]) -> t)) ]
+
+  []
 
 intBinOp :: (Int -> Int -> Int) -> (Scheme, Term)
 intBinOp f = ( finalise $ tyInt --> tyInt --> tyInt

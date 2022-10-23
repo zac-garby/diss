@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveTraversable, FlexibleInstances #-}
 
 module Types ( GenericType (..)
+             , DataType (..)
+             , DataConstructor (..)
              , Scheme (..)
              , BindingLocality (..)
              , HoleIndex
@@ -37,6 +39,12 @@ type Type = GenericType Ident
 
 data Scheme = Forall [Ident] Type
   deriving Eq
+
+data DataType = DataType [Ident] [DataConstructor]
+  deriving Show
+
+data DataConstructor = DataConstructor Ident [Type]
+  deriving Show
 
 tyInt :: Type
 tyInt = TyConstr "Int" []

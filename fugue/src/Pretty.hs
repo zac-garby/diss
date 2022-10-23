@@ -1,7 +1,8 @@
 module Pretty ( prettyTerm
               , prettyType
               , prettyScheme
-              , prettyEnv ) where
+              , prettyTypes
+              , prettyDataTypes ) where
 
 import Data.List
 import Data.Char
@@ -36,8 +37,8 @@ prettyType :: Type -> String
 prettyType (TyVar v) = colour (92 + m) v
   where m = (sum (map ord v) - ord 'a') `mod` 5
 prettyType (TyConstr "->" [l,r]) = bracketType l ++ " → " ++ prettyType r
-prettyType (TyConstr "List" [t]) = "[" ++ prettyType t ++ "]"
-prettyType (TyConstr "Tuple" xs) = "(" ++ intercalate ", " (map prettyType xs) ++ ")"
+-- prettyType (TyConstr "List" [t]) = "[" ++ prettyType t ++ "]"
+-- prettyType (TyConstr "Tuple" xs) = "(" ++ intercalate ", " (map prettyType xs) ++ ")"
 prettyType (TyConstr c []) = colour 32 c
 prettyType (TyConstr c ts) = colour 32 c ++ " " ++ intercalate " " (map bracketType ts)
 prettyType (TyHole i) = colour 91 (show i ++ "?")
@@ -46,11 +47,21 @@ prettyScheme :: Scheme -> String
 prettyScheme (Forall [] t) = prettyType t
 prettyScheme (Forall vs t) = colour 90 ("∀ " ++ intercalate " " vs ++ " . ") ++ prettyType t
 
-prettyEnv :: Environment -> String
-prettyEnv env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (pprintIdent ops name)) ++
+prettyTypes :: [(Ident, (Scheme, Term))] -> String
+prettyTypes env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (pprintIdent ops name)) ++
                                    " : " ++ prettyScheme sch
                                  | (name, (sch, _)) <- env ]
   where longestName = maximum (map (length . fst) env)
+
+prettyDataTypes :: [(Ident, DataType)] -> String
+prettyDataTypes dts = intercalate "\n" $ do
+  (name, DataType as cs) <- dts
+  return $ colour 90 "data "
+        ++ intercalate " " (colour 32 name : map (prettyType . TyVar) as)
+        ++ " = "
+        ++ (intercalate " | " $ do
+             DataConstructor c args <- cs
+             return $ intercalate " " (colour 32 c : map bracketType args))
 
 prettyHole :: BoundHole -> String
 prettyHole bh@(BoundHole i ty env)
@@ -83,7 +94,7 @@ prettyFit (Fit id args sch) =
                                      | (i, t) <- zip [0..] args ]
                          
 bracketType :: Type -> String
-bracketType t@(TyConstr "->" _) = "(" ++ prettyType t ++ ")"
+bracketType t@(TyConstr _ _) = "(" ++ prettyType t ++ ")"
 bracketType t = prettyType t
 
 colour :: Int -> String -> String

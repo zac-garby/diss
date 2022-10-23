@@ -32,11 +32,8 @@ type Ident = String
 
 data Definition = Definition Ident Expr
                 | TypeDefinition Ident Type
-                | DataDefinition Ident [Ident] [DataConstructor]
+                | DataDefinition Ident DataType
                 deriving Show
-
-data DataConstructor = DataConstructor Ident [Type]
-  deriving Show
 
 data ReplInput = ReplDef Definition | ReplExpr Expr
   deriving Show
@@ -129,7 +126,7 @@ dataDef = lexeme $ do
   vars <- sepBy ident whitespace
   equals
   constrs <- sepBy dataConstructor (keyword "|")
-  return $ DataDefinition name vars constrs
+  return $ DataDefinition name (DataType vars constrs)
 
 dataConstructor :: Parser DataConstructor
 dataConstructor = lexeme $ do

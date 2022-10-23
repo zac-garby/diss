@@ -32,7 +32,7 @@ instance Show Error where
 
 main :: IO ()
 main = do
-  putStrLn "fugue v1.0"
+  putStrLn "fugue v2.0"
   putStrLn "type :h for available commands"
   evalStateT (runExceptT repl) defaultEnv
   return ()
@@ -54,6 +54,7 @@ handleCommand (':':'p':rest) = perf rest
 handleCommand (':':'l':rest) = loadFiles (words rest)
 handleCommand (':':'b':[])   = search "t"
 handleCommand (':':'b':rest) = search rest
+handleCommand (':':'i':[])   = info
 handleCommand (':':'t':rest) = checkType rest
 handleCommand (':':'h':rest) = help
 handleCommand s = handleInput s
@@ -99,11 +100,18 @@ search s = do
   ty <- parseType "<repl>" s ?? SyntaxErr
   let sch = finalise ty
   env <- get
-  let matches = filter (\(name, (sch', _)) -> sch <= sch' || sch' <= sch) env
+  let matches = filter (\(name, (sch', _)) -> sch <= sch' || sch' <= sch) (terms env)
 
   liftIO $ case matches of
     [] -> putStrLn $ "  no matches found for " ++ prettyScheme sch
-    matches -> putStrLn $ prettyEnv matches
+    matches -> putStrLn $ prettyTypes matches
+
+info :: Interactive ()
+info = do
+  env <- get
+  liftIO $ case types env of
+    [] -> putStrLn $ "  no datatypes defined"
+    dts -> putStrLn $ prettyDataTypes (types env)
 
 checkType :: String -> Interactive ()
 checkType s = do
@@ -117,6 +125,7 @@ help = liftIO $ do
   putStrLn "    :l <file1> <file2> ...  load file(s)"
   putStrLn "    :b                      browse entire environment"
   putStrLn "    :b <type>               search the environment"
+  putStrLn "    :i                      list information about defined types"
   putStrLn "    :t                      derive the type of a term"
   putStrLn "    :p                      time an evaluation"
   putStrLn "    :h                      show this help message"
@@ -135,6 +144,9 @@ loadFile file = do
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
   let (types, defs, datas) = programParts prog
+
+  forM_ datas $ \(name, dt) -> insertDataType name dt
+  
   forM_ defs $ \(name, t) -> do
     env <- gets fromEnvironment
     let t' = case lookup name types of
@@ -142,14 +154,14 @@ typecheckProgram prog = do
                Nothing -> LetRec name t (Var name)
     sch <- typecheck env t' ?? TypeErr
     term <- compile env t' ?? CompileErr
-    modify (insertKV name (sch, term))
+    insertTerm name sch term
 
--- splits a program into (all type defs, all term defs)
-programParts :: Program -> ([(Ident, Type)], [(Ident, Expr)], [(Ident, Definition)])
+-- splits a program into (all type decls., all term defs, all data defs.)
+programParts :: Program -> ([(Ident, Type)], [(Ident, Expr)], [(Ident, DataType)])
 programParts [] = ([], [], [])
 programParts (d@(Definition n t):ds) = ([], [(n, t)], []) `mappend` programParts ds
 programParts (d@(TypeDefinition n t):ds) = ([(n, t)], [], []) `mappend` programParts ds
-programParts (d@(DataDefinition n _ _):ds) = ([], [], [(n, d)]) `mappend` programParts ds
+programParts (d@(DataDefinition n dt):ds) = ([], [], [(n, dt)]) `mappend` programParts ds
 
 restore :: Environment -> Error -> Interactive ()
 restore oldEnv err = do
@@ -168,11 +180,19 @@ insertKV k v ((k', v'):xs)
   | k == k' = (k, v) : xs
   | otherwise = (k', v') : insertKV k v xs
 
+insertTerm :: Ident -> Scheme -> Term -> Interactive ()
+insertTerm name sch val = modify f
+  where f (Environment terms types) = Environment (insertKV name (sch, val) terms) types
+
+insertDataType :: Ident -> DataType -> Interactive ()
+insertDataType name dt = modify f
+  where f (Environment terms types) = Environment terms (insertKV name dt types)
+
 fromEnvironment :: Environment -> Env
-fromEnvironment emt = [ (n, (sch, Global)) | (n, (sch, _)) <- emt ]
+fromEnvironment emt = [ (n, (sch, Global)) | (n, (sch, _)) <- terms emt ]
 
 envTerms :: Environment -> [Term]
-envTerms emt = [ t | (_, (_, t)) <- emt ]
+envTerms emt = [ t | (_, (_, t)) <- terms emt ]
 
 (??) :: Except a b -> (a -> Error) -> Interactive b
 e ?? f = case runExcept e of
