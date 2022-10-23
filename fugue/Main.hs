@@ -145,7 +145,9 @@ typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
   let (types, defs, datas) = programParts prog
 
-  forM_ datas $ \(name, dt) -> insertDataType name dt
+  forM_ datas $ \(name, dt) -> do
+    insertDataType name dt
+    insertConstructors name dt
   
   forM_ defs $ \(name, t) -> do
     env <- gets fromEnvironment
@@ -187,6 +189,11 @@ insertTerm name sch val = modify f
 insertDataType :: Ident -> DataType -> Interactive ()
 insertDataType name dt = modify f
   where f (Environment terms types) = Environment terms (insertKV name dt types)
+
+insertConstructors :: Ident -> DataType -> Interactive ()
+insertConstructors name (DataType tyArgs constrs) = forM_ constrs $ \(DataConstructor id args) -> do
+  let sch = finalise $ foldr (-->) (TyConstr name (map TyVar tyArgs)) args
+  insertTerm id sch (CConstr id)
 
 fromEnvironment :: Environment -> Env
 fromEnvironment emt = [ (n, (sch, Global)) | (n, (sch, _)) <- terms emt ]

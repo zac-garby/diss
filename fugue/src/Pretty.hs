@@ -20,6 +20,11 @@ prettyTerm :: Term -> Maybe String
 prettyTerm (CInt i) = Just $ colour 32 (show i)
 prettyTerm (CBool b) = Just $ colour 32 (show b)
 prettyTerm (CChar c) = Just $ colour 32 (show c)
+prettyTerm (CConstr c) = Just $ colour 32 c
+prettyTerm (CApp fn arg) = do
+  fn' <- prettyTerm fn
+  arg' <- bracketTerm arg
+  Just $ fn' ++ " " ++ arg'
 prettyTerm (CNil) = Just $ "[]"
 prettyTerm c@(CCons (CChar _) _) = do
   cs <- clist2list c
@@ -32,6 +37,12 @@ prettyTerm (CTuple xs) = do
   xs' <- mapM prettyTerm xs
   return $ "(" ++ intercalate ", " xs' ++ ")"
 prettyTerm _ = Nothing
+
+bracketTerm :: Term -> Maybe String
+bracketTerm t@(CApp _ _) = do
+  t' <- prettyTerm t
+  return $ "(" ++ t' ++ ")"
+bracketTerm t = prettyTerm t
 
 prettyType :: Type -> String
 prettyType (TyVar v) = colour (92 + m) v

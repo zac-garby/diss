@@ -28,6 +28,7 @@ data Term = CVar Index
           | CInt Int
           | CBool Bool
           | CChar Char
+          | CConstr Ident
           | CNil
           | CCons Term Term
           | CTuple [Term]
@@ -42,6 +43,7 @@ instance Show Term where
   show (CInt i) = "#" ++ show i
   show (CBool b) = show b
   show (CChar c) = show c
+  show (CConstr id) = id
   show (CNil) = "[]"
   show (CCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
   show (CTuple xs) = "(" ++ intercalate ", " (map show xs) ++ ")"
