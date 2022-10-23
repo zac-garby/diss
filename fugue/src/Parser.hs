@@ -1,5 +1,6 @@
 module Parser ( Expr (..)
               , Definition (..)
+              , DataConstructor (..)
               , ReplInput (..)
               , Ident
               , Program
