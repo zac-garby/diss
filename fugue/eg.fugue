@@ -1,3 +1,7 @@
+data List a = Nil | Cons a (List a);
+
+data Tree a = Leaf a | Node (Tree a) (Tree a);
+
 fac n = if n == 0
 	    then 1
 		else n * fac (n - 1);
@@ -34,3 +38,4 @@ lexicographic xs ys =
 			else if y < x
 				 then False
 				 else lexicographic (tail xs) (tail ys);
+				 
