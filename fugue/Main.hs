@@ -23,12 +23,14 @@ data Error = TypeErr TypeError
            | SyntaxErr ParseError
            | CompileErr CompilerError
            | FileErr FilePath
+           | DefinedErr Ident
 
 instance Show Error where
   show (TypeErr te) = show te
   show (SyntaxErr fp) = show fp
   show (CompileErr ce) = show ce
   show (FileErr fp) = "file '" ++ fp ++ "' does not exist"
+  show (DefinedErr id) = "identifier '" ++ id ++ "' is defined twice"
 
 main :: IO ()
 main = do
@@ -183,8 +185,11 @@ insertKV k v ((k', v'):xs)
   | otherwise = (k', v') : insertKV k v xs
 
 insertTerm :: Ident -> Scheme -> Term -> Interactive ()
-insertTerm name sch val = modify f
-  where f (Environment terms types) = Environment (insertKV name (sch, val) terms) types
+insertTerm name sch val = do
+  Environment terms types <- get
+  case lookup name terms of
+    Nothing -> put $ Environment (insertKV name (sch, val) terms) types
+    Just _ -> throwError $ DefinedErr name
 
 insertDataType :: Ident -> DataType -> Interactive ()
 insertDataType name dt = modify f

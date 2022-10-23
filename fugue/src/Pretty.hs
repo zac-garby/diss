@@ -51,8 +51,16 @@ prettyType (TyConstr "->" [l,r]) = bracketType l ++ " → " ++ prettyType r
 -- prettyType (TyConstr "List" [t]) = "[" ++ prettyType t ++ "]"
 -- prettyType (TyConstr "Tuple" xs) = "(" ++ intercalate ", " (map prettyType xs) ++ ")"
 prettyType (TyConstr c []) = colour 32 c
-prettyType (TyConstr c ts) = colour 32 c ++ " " ++ intercalate " " (map bracketType ts)
+prettyType (TyConstr c ts) = colour 32 c ++ " " ++ intercalate " " (map bracketTypeApp ts)
 prettyType (TyHole i) = colour 91 (show i ++ "?")
+
+bracketType :: Type -> String
+bracketType t@(TyConstr "->" _) = "(" ++ prettyType t ++ ")"
+bracketType t = prettyType t
+
+bracketTypeApp :: Type -> String
+bracketTypeApp t@(TyConstr _ (_:_)) = "(" ++ prettyType t ++ ")"
+bracketTypeApp t = bracketType t
 
 prettyScheme :: Scheme -> String
 prettyScheme (Forall [] t) = prettyType t
@@ -103,10 +111,6 @@ prettyFit (Fit id args sch) =
     args -> "\n" ++ intercalate ",\n" [ "    |     " ++ colour 92 ("x" ++ show i) ++
                                        " : " ++ prettyType t
                                      | (i, t) <- zip [0..] args ]
-                         
-bracketType :: Type -> String
-bracketType t@(TyConstr _ _) = "(" ++ prettyType t ++ ")"
-bracketType t = prettyType t
 
 colour :: Int -> String -> String
 colour n s = "\ESC[0;" ++ show n ++ "m" ++ s ++ "\ESC[0m"
