@@ -1,12 +1,14 @@
+data Maybe a = Just a | Nothing;
 
+x = Just 1;
+y = Nothing;
 
+f x = case x of
+  Just a -> a,
+  Nothing -> 0;
 
--- a function which returns the smallest integer
--- in a list of integers.
+data Either a = Left a | Right a;
 
-minimum : [Int] -> Int;
-minimum xs =
-  if length xs == 1
-  then head xs
-  else min (head xs) (minimum (tail xs));
-
+to_bool x = case x of
+  Left a -> True,
+  Right a -> False;

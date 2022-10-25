@@ -29,6 +29,7 @@ data Term = CVar Index
           | CBool Bool
           | CChar Char
           | CConstr Ident
+          | CCase Term [(Ident, Term)]
           | CNil
           | CCons Term Term
           | CTuple [Term]
@@ -44,6 +45,8 @@ instance Show Term where
   show (CBool b) = show b
   show (CChar c) = show c
   show (CConstr id) = id
+  show (CCase t cs) = "case " ++ show t ++ " of [ " ++ intercalate ", " (map showCase cs) ++ " ]"
+    where showCase (con, body) = con ++ " -> " ++ show body
   show (CNil) = "[]"
   show (CCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
   show (CTuple xs) = "(" ++ intercalate ", " (map show xs) ++ ")"
@@ -101,6 +104,13 @@ fromExpr (If cond t f) = do
   t' <- fromExpr t
   f' <- fromExpr f
   return $ CIf cond' t' f'
+
+fromExpr (Case t cs) = do
+  t' <- fromExpr t
+  cases' <- forM cs $ \(constr, args, body) -> do
+    body' <- fromExpr $ foldr Abs body args
+    return (constr, body')
+  return $ CCase t' cases'
 
 fromExpr (LitInt n) = return $ CInt n
 fromExpr (LitBool b) = return $ CBool b

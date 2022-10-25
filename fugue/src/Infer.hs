@@ -28,6 +28,8 @@ data TypeError = UnifyInfiniteError Ident Type
                | TypeSpecMismatch Scheme Scheme
                | UnboundVariableError Ident
                | FoundHoles Scheme [BoundHole]
+               | CaseNonConstructor Type
+               | TypeNotDefined Ident
 
 typecheck :: Env -> Expr -> Except TypeError Scheme
 typecheck e expr = do
@@ -64,9 +66,7 @@ infer (App f x) = do
   return tv
 
 infer (Let x e b) = do
-  (te, cs) <- listen $ infer e
-  s <- lift $ runUnify (solve cs)
-  sch <- local (sub s) (generalise (sub s te))
+  sch <- withSolved e generalise
   with (x, sch) (infer b)
 
 infer (LetRec x e b) = do
@@ -87,6 +87,25 @@ infer (If cond t f) = do
 
   return tt
 
+infer (Case t cases) = do
+  tt <- infer t
+  tb <- fresh
+  env <- ask
+  
+  forM_ cases $ \(constr, args, body) -> do
+    tArgs <- mapM (const fresh) args
+    let schArgs = zipWith (\arg ty -> (arg, Forall [] ty)) args tArgs
+    
+    (tb', tt') <- withMany schArgs $ do
+      tb' <- infer body
+      tt' <- infer $ foldl App (Var constr) (map Var args)
+      return (tb', tt')
+      
+    tb ~~ tb'
+    tt ~~ tt'
+
+  return tb
+
 infer (LitInt _) = return tyInt
 infer (LitBool _) = return tyBool
 infer (LitChar _) = return tyChar
@@ -105,13 +124,23 @@ infer (LitTuple xs) = do
 infer (TypeSpec e t) = do
   (te, cs) <- listen $ infer e
   s <- lift $ runUnify (solve cs)
-  sch <- local (sub s) (generalise (sub s te))
-  t' <- local (sub s) (generalise t)
+
+  (sch, t') <- withSolved e $ \te -> do
+    sch <- generalise te
+    t' <- generalise t
+    return (sch, t')
+    
   if sch <= t'
     then return t
     else throwError $ TypeSpecMismatch sch t'
 
 infer (Hole i) = return $ TyHole i
+
+withSolved :: Expr -> (Type -> Infer a) -> Infer a
+withSolved e body = do
+  (te, cs) <- listen $ infer e
+  s <- lift $ runUnify (solve cs)
+  local (sub s) (body (sub s te))
 
 runInfer :: Env -> Infer a -> Except TypeError (a, [Constraint])
 runInfer env i = evalRWST i env tempVars
@@ -144,6 +173,10 @@ infixl 1 ~~
 
 with :: MonadReader Env m => (Ident, Scheme) -> m a -> m a
 with (i, sch) = local ((i, (sch, Local)) :)
+
+withMany :: MonadReader Env m => [(Ident, Scheme)] -> m a -> m a
+withMany [] b = b
+withMany (i:is) b = with i (withMany is b)
 
 type Unify = StateT Subst (Except TypeError)
 

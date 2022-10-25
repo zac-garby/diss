@@ -46,6 +46,7 @@ data Expr = Var Ident
           | Let Ident Expr Expr
           | LetRec Ident Expr Expr
           | If Expr Expr Expr
+          | Case Expr [(Ident, [Ident], Expr)]
           | LitInt Int
           | LitBool Bool
           | LitList [Expr]
@@ -121,12 +122,17 @@ typeDef = lexeme $ do
 dataDef :: Parser Definition
 dataDef = lexeme $ do
   keyword "data"
-  name <- ident
-  guard $ isUpper (head name)
+  name <- constrName
   vars <- sepBy ident whitespace
   equals
   constrs <- sepBy dataConstructor (keyword "|")
   return $ DataDefinition name (DataType vars constrs)
+
+constrName :: Parser Ident
+constrName = do
+  name <- ident
+  guard $ isUpper (head name)
+  return name
 
 dataConstructor :: Parser DataConstructor
 dataConstructor = lexeme $ do
@@ -149,7 +155,7 @@ op :: Parser Expr
 op = mkOpParser term ops
 
 term :: Parser Expr
-term = choice [ try app, abstr, try letRecExpr, letExpr, ifExpr ]
+term = choice [ try app, abstr, try letRecExpr, letExpr, ifExpr, caseExpr ]
        <?> "term"
 
 app :: Parser Expr
@@ -189,6 +195,22 @@ ifExpr = do
   keyword "else"
   negative <- expr
   return $ If cond positive negative
+
+caseExpr :: Parser Expr
+caseExpr = do
+  keyword "case"
+  t <- expr
+  keyword "of"
+  cases <- sepBy caseClause (keyword ",")
+  return $ Case t cases
+
+caseClause :: Parser (Ident, [Ident], Expr)
+caseClause = do
+  constr <- constrName
+  args <- sepBy ident whitespace
+  arrow
+  body <- expr
+  return (constr, args, body)
 
 atom :: Parser Expr
 atom = choice [ try var, hole, try bracket, list, tuple, litInt, litBool, litChar, litString ]
@@ -339,6 +361,8 @@ keywords = [ "let"
            , "rec"
            , "in"
            , "if"
+           , "case"
+           , "of"
            , "then"
            , "else"
            , "True"

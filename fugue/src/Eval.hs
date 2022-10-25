@@ -22,6 +22,7 @@ evalStep t = evalAppAbs t
          <|> evalApp2 t
          <|> evalFix t
          <|> evalIf t
+         <|> evalCase t
          <|> evalHead t
          <|> evalTail t
          <|> evalTuple t
@@ -58,6 +59,17 @@ evalIf (CIf cond t f) = do
   return $ CIf cond' t f
 evalIf _ = Nothing
 
+evalCase :: Term -> Maybe Term
+evalCase (CCase _ []) = undefined
+evalCase (CCase t cs'@((con, body) : cs))
+  | isValue t = case match con t body of
+      Just args -> return $ foldl CApp body args
+      Nothing -> return $ CCase t cs
+  | otherwise = do
+      t' <- evalStep t
+      return $ CCase t cs'
+evalCase _ = Nothing
+
 evalHead :: Term -> Maybe Term
 evalHead (CCons h t) = do
   h' <- evalStep h
@@ -79,6 +91,13 @@ evalTuple (CTuple (x:xs)) = case evalStep x of
     return $ CTuple (x : xs')
 evalTuple _ = Nothing
 
+match :: String -> Term -> Term -> Maybe [Term]
+match con (CApp f x) (CAbs b) = do
+  args <- match con f b
+  return $ x : args
+match con (CConstr con') b | con == con' = return []
+match _ _ _ = Nothing
+
 isProper :: EvalType -> Term -> Bool
 isProper Full = isValue
 isProper WHNF = isWHNF
@@ -92,6 +111,7 @@ isValue (CApp (CBuiltin _ _) _) = False
 isValue (CApp a b) = isValue a && isValue b
 isValue (CFix t) = False
 isValue (CIf _ _ _) = False
+isValue (CCase _ _) = False
 isValue (CInt _) = True
 isValue (CBool _) = True
 isValue (CChar _) = True
@@ -115,6 +135,7 @@ shift' d c (CAbs t) = CAbs (shift' d (c + 1) t)
 shift' d c (CApp f x) = CApp (shift' d c f) (shift' d c x)
 shift' d c (CFix t) = CFix (shift' d c t)
 shift' d c (CIf cond t f) = CIf (shift' d c cond) (shift' d c t) (shift' d c f)
+shift' d c (CCase t cs) = CCase (shift' d c t) [ (con, shift' d c b) | (con, b) <- cs ]
 shift' d c (CInt i) = CInt i
 shift' d c (CBool b) = CBool b
 shift' d c (CChar ch) = CChar ch
@@ -131,6 +152,7 @@ shift' d c (CBuiltin t f) = CBuiltin t f
 (j --> s) (CApp f x) = (CApp $! (j --> s) f) $! ((j --> s) x)
 (j --> s) (CFix t) = CFix $! (j --> s) t
 (j --> s) (CIf cond t f) = CIf ((j --> s) cond) ((j --> s) t) ((j --> s) f)
+(j --> s) (CCase t cs) = CCase ((j --> s) t) [ (con, (j --> s) b) | (con, b) <- cs ]
 (j --> s) (CInt i) = CInt i
 (j --> s) (CBool b) = CBool b
 (j --> s) (CChar c) = CChar c

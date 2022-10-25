@@ -133,6 +133,10 @@ instance Show TypeError where
   show (FoundHoles sch hs) =
     "found holes in " ++ prettyScheme sch ++ ":\n"
     ++ intercalate "\n" (map prettyHole hs)
+  show (CaseNonConstructor t) =
+    "attempted case-analysis on non-datatype " ++ prettyType t
+  show (TypeNotDefined name) =
+    "undefined type '" ++ name ++ "'"
 
 instance Show CompilerError where
   show (UndefinedVariable v) = "undeclared variable: " ++ v
