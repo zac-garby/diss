@@ -28,8 +28,6 @@ data TypeError = UnifyInfiniteError Ident Type
                | TypeSpecMismatch Scheme Scheme
                | UnboundVariableError Ident
                | FoundHoles Scheme [BoundHole]
-               | CaseNonConstructor Type
-               | TypeNotDefined Ident
 
 typecheck :: Env -> Expr -> Except TypeError Scheme
 typecheck e expr = do
