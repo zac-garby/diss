@@ -185,15 +185,10 @@ insertKV k v ((k', v'):xs)
   | otherwise = (k', v') : insertKV k v xs
 
 insertTerm :: Ident -> Scheme -> Term -> Interactive ()
-insertTerm name sch val = do
-  Environment terms types <- get
-  case lookup name terms of
-    Nothing -> put $ Environment (insertKV name (sch, val) terms) types
-    Just _ -> throwError $ DefinedErr name
+insertTerm name sch val = modify $ defineTerm name sch val
 
 insertDataType :: Ident -> DataType -> Interactive ()
-insertDataType name dt = modify f
-  where f (Environment terms types) = Environment terms (insertKV name dt types)
+insertDataType name dt = modify $ defineDataType name dt
 
 insertConstructors :: Ident -> DataType -> Interactive ()
 insertConstructors name (DataType tyArgs constrs) = forM_ constrs $ \(DataConstructor id args) -> do

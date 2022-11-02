@@ -305,6 +305,18 @@ typeAs (If c true false) t = do
   typeAs true t
   typeAs false t
 
+typeAs (Case c cases) t = do
+  tc <- lift fresh
+  typeAs c tc
+
+  forM_ cases $ \(constr, args, body) -> do
+    tyArgs <- mapM (const (lift fresh)) args
+    let schArgs = zipWith (\arg ty -> (arg, Forall [] ty)) args tyArgs
+
+    withMany schArgs $ do
+      typeAs body t
+      typeAs (foldl App (Var constr) (map Var args)) tc
+
 typeAs (TypeSpec e t) t' = do
   lift $ t ~~ t'
   typeAs e t'

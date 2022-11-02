@@ -1,5 +1,7 @@
 module Env ( Environment (..)
-           , defaultEnv ) where
+           , defaultEnv
+           , defineTerm
+           , defineDataType ) where
 
 import Data.Char
 
@@ -9,7 +11,15 @@ import Compiler
 
 data Environment = Environment
   { terms :: [(String, (Scheme, Term))]
-  , types :: [(String, DataType)] }
+  , types :: DataTypes }
+
+defineTerm :: String -> Scheme -> Term -> Environment -> Environment
+defineTerm name sch val (Environment terms types) =
+  Environment (insertKV name (sch, val) terms) types
+
+defineDataType :: String -> DataType -> Environment -> Environment
+defineDataType name dt (Environment terms types) =
+  Environment terms (insertKV name dt types)
 
 a = TyVar "a"
 b = TyVar "b"
@@ -82,3 +92,9 @@ tailFn CNil = error "the empty list doesn't have a tail"
 nullFn :: Term -> Term
 nullFn (CCons _ _) = toTerm False
 nullFn CNil = toTerm True
+
+insertKV :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+insertKV k v [] = [(k, v)]
+insertKV k v ((k', v'):xs)
+  | k == k' = (k, v) : xs
+  | otherwise = (k', v') : insertKV k v xs

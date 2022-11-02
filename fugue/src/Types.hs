@@ -3,6 +3,7 @@
 module Types ( GenericType (..)
              , DataType (..)
              , DataConstructor (..)
+             , DataTypes
              , Scheme (..)
              , BindingLocality (..)
              , HoleIndex
@@ -45,6 +46,8 @@ data DataType = DataType [Ident] [DataConstructor]
 
 data DataConstructor = DataConstructor Ident [Type]
   deriving Show
+
+type DataTypes = [(Ident, DataType)]
 
 tyInt :: Type
 tyInt = TyConstr "Int" []
@@ -166,3 +169,7 @@ makeRenamer t = snd $ execState (traverse mk t) (allVars, [])
           case lookup v existing of
             Just n -> return ()
             Nothing -> put (rest, (v, TyVar new) : existing)
+
+{-checkDataType :: DataType -> DataTypes -> Bool
+checkDataType (DataType params constrs) env = all checkConstr constrs
+  where checkConstr (DataConstructor name args) = _-}

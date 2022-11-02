@@ -390,6 +390,8 @@ foldExpr c l a (Abs v t) = foldExpr c l a t
 foldExpr c l a (Let v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (LetRec v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (If cond t f) = foldExpr c l a f `c` foldExpr c l a t `c` foldExpr c l a cond
+foldExpr c l a (Case co cases) = foldExpr c l a co `c`
+                                foldr c a [ foldExpr c l a b | (_, _, b) <- cases ]
 foldExpr c l a (LitList xs) = foldr c a (map (foldExpr c l a) xs)
 foldExpr c l a (LitTuple xs) = foldr c a (map (foldExpr c l a) xs)
 foldExpr c l a (TypeSpec e _) = foldExpr c l a e
