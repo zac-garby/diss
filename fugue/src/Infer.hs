@@ -28,14 +28,20 @@ data TypeError = UnifyInfiniteError Ident Type
                | TypeSpecMismatch Scheme Scheme
                | UnboundVariableError Ident
                | FoundHoles Scheme [BoundHole]
+               | MissingCases [DataConstructor]
+               | UnknownConstructor Ident
 
-typecheck :: Env -> Expr -> Except TypeError Scheme
-typecheck e expr = do
-  (sch, cs) <- runInfer e (inferScheme expr)
+typecheck :: Env -> DataTypes -> Expr -> Except TypeError Scheme
+typecheck e dts expr = do
+  (sch, cs) <- runInfer e dts (inferScheme expr)
   return sch
 
+data InferContext = Context
+  { env :: Env
+  , types :: DataTypes }
+
 type Infer = RWST
-  Env                -- typing environment
+  InferContext       -- typing environment and defined types
   [Constraint]       -- constraints accumulator
   [Ident]            -- fresh variable names
   (Except TypeError) -- errors
@@ -43,7 +49,7 @@ type Infer = RWST
 infer :: Expr -> Infer Type
 
 infer (Var x) = do
-  env <- ask
+  env <- asks env
   case lookup x env of
     Nothing -> throwError $ UnboundVariableError x
     Just (t, _) -> instantiate t
@@ -85,24 +91,34 @@ infer (If cond t f) = do
 
   return tt
 
+infer (Case t []) = undefined
+
 infer (Case t cases) = do
   tt <- infer t
   tb <- fresh
   env <- ask
-  
-  forM_ cases $ \(constr, args, body) -> do
-    tArgs <- mapM (const fresh) args
-    let schArgs = zipWith (\arg ty -> (arg, Forall [] ty)) args tArgs
-    
-    (tb', tt') <- withMany schArgs $ do
-      tb' <- infer body
-      tt' <- infer $ foldl App (Var constr) (map Var args)
-      return (tb', tt')
-      
-    tb ~~ tb'
-    tt ~~ tt'
 
-  return tb
+  let (con1, _, _) = head cases
+  dt <- dataTypeWithCon con1
+  
+  case dt of
+    Just (DataType dtParams dtCons) -> case missingCases dtCons cases of
+      [] -> do
+        forM_ cases $ \(constr, args, body) -> do
+          tArgs <- mapM (const fresh) args
+          let schArgs = zipWith (\arg ty -> (arg, Forall [] ty)) args tArgs
+    
+          (tb', tt') <- withMany schArgs $ do
+            tb' <- infer body
+            tt' <- infer $ foldl App (Var constr) (map Var args)
+            return (tb', tt')
+        
+          tb ~~ tb'
+          tt ~~ tt'
+
+        return tb
+      missing -> throwError $ MissingCases missing
+    Nothing -> throwError $ UnknownConstructor con1
 
 infer (LitInt _) = return tyInt
 infer (LitBool _) = return tyBool
@@ -134,14 +150,25 @@ infer (TypeSpec e t) = do
 
 infer (Hole i) = return $ TyHole i
 
+missingCases :: [DataConstructor] -> [(Ident, [Ident], Expr)] -> [DataConstructor]
+missingCases dtCons cases = filter (\(DataConstructor name _) -> not (covered name)) dtCons
+  where covered name = any (\(name', _, _) -> name == name') cases
+
 withSolved :: Expr -> (Type -> Infer a) -> Infer a
 withSolved e body = do
   (te, cs) <- listen $ infer e
   s <- lift $ runUnify (solve cs)
-  local (sub s) (body (sub s te))
+  local (\c -> c { env = sub s (env c) }) (body (sub s te))
 
-runInfer :: Env -> Infer a -> Except TypeError (a, [Constraint])
-runInfer env i = evalRWST i env tempVars
+runInfer :: Env -> DataTypes -> Infer a -> Except TypeError (a, [Constraint])
+runInfer env dts i = evalRWST i (Context env dts) tempVars
+
+dataTypeWithCon :: Ident -> Infer (Maybe DataType)
+dataTypeWithCon name = do
+  dts <- asks types
+  return $ find (\(DataType _ cons) ->
+                   any (\(DataConstructor n _) -> n == name) cons)
+    (map snd dts)
 
 instantiate :: Scheme -> Infer Type
 instantiate (Forall vs t) = do
@@ -150,7 +177,7 @@ instantiate (Forall vs t) = do
 
 generalise :: Type -> Infer Scheme
 generalise t = do
-  env <- ask
+  env <- asks env
   return $ Forall (freeVars t \\ freeVars env) t
 
 freshName :: Infer Ident
@@ -169,10 +196,10 @@ infixl 1 ~~
 (~~) :: Type -> Type -> Infer ()
 (~~) a b = tell [(a, b)]
 
-with :: MonadReader Env m => (Ident, Scheme) -> m a -> m a
-with (i, sch) = local ((i, (sch, Local)) :)
+with :: MonadReader InferContext m => (Ident, Scheme) -> m a -> m a
+with (i, sch) = local $ \ c -> c { env = (i, (sch, Local)) : env c }
 
-withMany :: MonadReader Env m => [(Ident, Scheme)] -> m a -> m a
+withMany :: MonadReader InferContext m => [(Ident, Scheme)] -> m a -> m a
 withMany [] b = b
 withMany (i:is) b = with i (withMany is b)
 
@@ -247,7 +274,7 @@ typeHoles expr t = do
 typeAs :: Expr -> Type -> W.WriterT [BoundHole] Infer ()
 
 typeAs (Var x) t = lift $ do
-  env <- ask
+  env <- asks env
   case lookup x env of
     Nothing -> throwError $ UnboundVariableError x
     Just (sch, _) -> do
@@ -322,7 +349,7 @@ typeAs (TypeSpec e t) t' = do
   typeAs e t'
 
 typeAs (Hole n) t = do
-  env <- lift ask
+  env <- lift (asks env)
   lift $ TyHole n ~~ t
   tell $ [BoundHole n t env]
 

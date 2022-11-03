@@ -112,6 +112,9 @@ prettyFit (Fit id args sch) =
                                        " : " ++ prettyType t
                                      | (i, t) <- zip [0..] args ]
 
+prettyConstructor :: DataConstructor -> String
+prettyConstructor (DataConstructor name args) = colour 32 name
+
 colour :: Int -> String -> String
 colour n s = "\ESC[0;" ++ show n ++ "m" ++ s ++ "\ESC[0m"
 
@@ -133,6 +136,9 @@ instance Show TypeError where
   show (FoundHoles sch hs) =
     "found holes in " ++ prettyScheme sch ++ ":\n"
     ++ intercalate "\n" (map prettyHole hs)
+  show (MissingCases cases) = show (length cases) ++ " missing cases: "
+    ++ intercalate ", " (map prettyConstructor cases)
+  show (UnknownConstructor con) = "undefined constructor: " ++ con
 
 instance Show CompilerError where
   show (UndefinedVariable v) = "undeclared variable: " ++ v

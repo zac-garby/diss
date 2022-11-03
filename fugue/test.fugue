@@ -34,5 +34,5 @@ height t = case t of
   Node l r -> 1 + max (height l) (height r);
 
 f x = case x of
-  Nothing -> ?,
+  Nothing -> 0,
   Just n -> n + 1;

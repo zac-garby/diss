@@ -1,0 +1,26 @@
+-- [] -> []
+-- [1] -> [1, 1]
+-- [0, 1] -> [0, 0, 1, 1]
+stutter : [a] -> [a];
+stutter xs = case xs of
+  [] -> aux0 xs,
+  (y::ys) -> aux1 xs y ys;
+
+-- [] -> []
+aux0 : [a] -> [a];
+aux0 xs = [];
+
+-- [1], 1, []     -> [1, 1]
+-- [0, 1], 0, [1] -> [0, 0, 1, 1]
+aux1 : [a] -> a -> [a] -> [a];
+aux1 xs y ys = aux2 xs y ys :: aux3 xs y ys;
+
+-- [1], 1, []     -> 1
+-- [0, 1], 0, [1] -> 0
+aux2 : [a] -> a -> [a] -> [a];
+aux2 xs y ys = y;
+
+-- [1], 1, []     -> [1]
+-- [0, 1], 0, [1] -> [0, 1, 1]
+aux3 : [a] -> a -> [a] -> [a];
+aux3 xs y ys = aux4 xs y ys :: aux5 xs y ys;

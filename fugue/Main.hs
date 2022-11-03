@@ -8,6 +8,7 @@ import Text.Parsec (ParseError)
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
+import Debug.Trace
 
 import Parser
 import Types
@@ -16,6 +17,7 @@ import Compiler
 import Eval
 import Env
 import Pretty
+import Synthesis
 
 type Interactive = ExceptT Error (StateT Environment IO)
 
@@ -135,7 +137,8 @@ help = liftIO $ do
 typecheckTerm :: Expr -> Interactive Scheme
 typecheckTerm t = do
   env <- gets fromEnvironment
-  typecheck env t ?? TypeErr
+  dts <- gets types
+  typecheck env dts t ?? TypeErr
 
 loadFile :: String -> Interactive ()
 loadFile file = do
@@ -145,7 +148,7 @@ loadFile file = do
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
-  let (types, defs, datas) = programParts prog
+  let (typeDecls, defs, datas) = programParts prog
 
   forM_ datas $ \(name, dt) -> do
     insertDataType name dt
@@ -153,10 +156,11 @@ typecheckProgram prog = do
   
   forM_ defs $ \(name, t) -> do
     env <- gets fromEnvironment
-    let t' = case lookup name types of
+    dts <- gets types
+    let t' = case lookup name typeDecls of
                Just ty -> TypeSpec (LetRec name t (Var name)) ty
                Nothing -> LetRec name t (Var name)
-    sch <- typecheck env t' ?? TypeErr
+    sch <- typecheck env dts t' ?? TypeErr
     term <- compile env t' ?? CompileErr
     insertTerm name sch term
 
