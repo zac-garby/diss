@@ -23,8 +23,6 @@ evalStep t = evalAppAbs t
          <|> evalFix t
          <|> evalIf t
          <|> evalCase t
-         <|> evalHead t
-         <|> evalTail t
          <|> evalTuple t
 
 evalAppAbs :: Term -> Maybe Term
@@ -52,8 +50,8 @@ evalFix (CFix t) = do
 evalFix _ = Nothing
 
 evalIf :: Term -> Maybe Term
-evalIf (CIf (CBool True) t _) = return t
-evalIf (CIf (CBool False) _ f) = return f
+evalIf (CIf (CConstr "True") t _) = return t
+evalIf (CIf (CConstr "False") _ f) = return f
 evalIf (CIf cond t f) = do
   cond' <- evalStep cond
   return $ CIf cond' t f
@@ -70,18 +68,6 @@ evalCase (CCase t cs'@((con, body) : cs))
       return $ CCase t cs'
 evalCase _ = Nothing
 
-evalHead :: Term -> Maybe Term
-evalHead (CCons h t) = do
-  h' <- evalStep h
-  return $ CCons h' t
-evalHead _ = Nothing
-
-evalTail :: Term -> Maybe Term
-evalTail (CCons h t) = do
-  t' <- evalStep t
-  return $ CCons h t'
-evalTail _ = Nothing
-
 evalTuple :: Term -> Maybe Term
 evalTuple (CTuple (x:xs)) = case evalStep x of
   Just x' -> return $ CTuple (x' : xs)
@@ -94,7 +80,7 @@ evalTuple _ = Nothing
 match :: String -> Term -> Term -> Maybe [Term]
 match con (CApp f x) (CAbs b) = do
   args <- match con f b
-  return $ x : args
+  return $ args ++ [x]
 match con (CConstr con') b | con == con' = return []
 match _ _ _ = Nothing
 
@@ -113,16 +99,14 @@ isValue (CFix t) = False
 isValue (CIf _ _ _) = False
 isValue (CCase _ _) = False
 isValue (CInt _) = True
-isValue (CBool _) = True
 isValue (CChar _) = True
 isValue (CConstr _) = True
-isValue CNil = True
-isValue (CCons a b) = isValue a && isValue b
 isValue (CTuple xs) = all isValue xs
 isValue (CBuiltin _ _) = True
 
 isWHNF :: Term -> Bool
-isWHNF (CCons h _) = isValue h
+isWHNF (CApp (CConstr _) a) = True
+isWHNF (CApp a b) = isWHNF a
 isWHNF t = isValue t
 
 shift :: Int -> Term -> Term
@@ -137,11 +121,8 @@ shift' d c (CFix t) = CFix (shift' d c t)
 shift' d c (CIf cond t f) = CIf (shift' d c cond) (shift' d c t) (shift' d c f)
 shift' d c (CCase t cs) = CCase (shift' d c t) [ (con, shift' d c b) | (con, b) <- cs ]
 shift' d c (CInt i) = CInt i
-shift' d c (CBool b) = CBool b
 shift' d c (CChar ch) = CChar ch
 shift' d c (CConstr con) = CConstr con
-shift' d c (CNil) = CNil
-shift' d c (CCons a b) = CCons (shift' d c a) (shift' d c b)
 shift' d c (CTuple xs) = CTuple (map (shift' d c) xs)
 shift' d c (CBuiltin t f) = CBuiltin t f
 
@@ -154,10 +135,7 @@ shift' d c (CBuiltin t f) = CBuiltin t f
 (j --> s) (CIf cond t f) = CIf ((j --> s) cond) ((j --> s) t) ((j --> s) f)
 (j --> s) (CCase t cs) = CCase ((j --> s) t) [ (con, (j --> s) b) | (con, b) <- cs ]
 (j --> s) (CInt i) = CInt i
-(j --> s) (CBool b) = CBool b
 (j --> s) (CChar c) = CChar c
 (j --> s) (CConstr c) = CConstr c
-(j --> s) (CNil) = CNil
-(j --> s) (CCons a b) = CCons ((j --> s) a) ((j --> s) b)
 (j --> s) (CTuple xs) = CTuple (map (j --> s) xs)
 (j --> s) (CBuiltin t f) = CBuiltin t f

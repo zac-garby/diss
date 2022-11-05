@@ -48,7 +48,6 @@ data Expr = Var Ident
           | If Expr Expr Expr
           | Case Expr [(Ident, [Ident], Expr)]
           | LitInt Int
-          | LitBool Bool
           | LitList [Expr]
           | LitTuple [Expr]
           | LitChar Char
@@ -71,7 +70,7 @@ ops = [ (RightAssoc, [ ("$", "__apply") ])
       , (LeftAssoc,  [ ("=/=", "__neq"), ("==", "__eq") ])
       , (LeftAssoc,  [ ("<=", "__lte"), (">=", "__gte"), ("<", "__lt"), (">", "__gt") ])
       , (LeftAssoc,  [ ("!", "__index") ])
-      , (RightAssoc, [ ("::", "__cons") ])
+      , (RightAssoc, [ ("::", "Cons") ])
       , (RightAssoc, [ (".", "__comp") ])
       , (LeftAssoc,  [ ("++", "__app"), ("+", "__add"), ("-", "__sub") ])
       , (LeftAssoc,  [ ("*", "__mul"), ("/", "__div"), ("%", "__mod") ]) ]
@@ -213,7 +212,7 @@ caseClause = do
   return (constr, args, body)
 
 atom :: Parser Expr
-atom = choice [ try var, hole, try bracket, list, tuple, litInt, litBool, litChar, litString ]
+atom = choice [ try var, hole, try bracket, list, tuple, litInt, litChar, litString ]
   <?> "atomic expression"
 
 var :: Parser Expr
@@ -239,9 +238,6 @@ tuple = parens $ do
 
 litInt :: Parser Expr
 litInt = lexeme $ LitInt <$> int
-
-litBool :: Parser Expr
-litBool = lexeme $ LitBool . read <$> (keyword "True" <|> keyword "False")
 
 litChar :: Parser Expr
 litChar = lexeme $ do
@@ -322,6 +318,7 @@ lineComment :: Parser ()
 lineComment = do
   string "--"
   skipMany (satisfy (/= '\n'))
+  <?> "comment"
 
 lexeme :: Parser a -> Parser a
 lexeme p = p <* whitespace
@@ -365,8 +362,6 @@ keywords = [ "let"
            , "of"
            , "then"
            , "else"
-           , "True"
-           , "False"
            , "data" ]
 
 mkOpParser :: Parser Expr -> Operators -> Parser Expr

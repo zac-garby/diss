@@ -18,21 +18,20 @@ import Infer
 -- if the term is not designed to be user-visible, Nothing is returned
 prettyTerm :: Term -> Maybe String
 prettyTerm (CInt i) = Just $ colour 32 (show i)
-prettyTerm (CBool b) = Just $ colour 32 (show b)
 prettyTerm (CChar c) = Just $ colour 32 (show c)
 prettyTerm (CConstr c) = Just $ colour 32 c
 prettyTerm (CApp fn arg) = do
   fn' <- prettyTerm fn
   arg' <- bracketTerm arg
   Just $ fn' ++ " " ++ arg'
-prettyTerm (CNil) = Just $ "[]"
-prettyTerm c@(CCons (CChar _) _) = do
+prettyTerm (CConstr "Nil") = Just $ "[]"
+{-prettyTerm c@(CCons (CChar _) _) = do
   cs <- clist2list c
   return $ colour 32 ("\"" ++ map (\(CChar c) -> c) cs ++ "\"")
 prettyTerm c@(CCons h t) = do
   ts <- clist2list c
   strings <- mapM prettyTerm ts
-  return $ "[" ++ intercalate ", " strings ++ "]"
+  return $ "[" ++ intercalate ", " strings ++ "]"-}
 prettyTerm (CTuple xs) = do
   xs' <- mapM prettyTerm xs
   return $ "(" ++ intercalate ", " xs' ++ ")"

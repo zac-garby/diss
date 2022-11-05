@@ -1,3 +1,9 @@
+data List a = Nil | Cons a (List a);
+
+data Maybe a = Nothing | Just a;
+
+data Bool = True | False;
+
 (.) : (b -> c) -> (a -> b) -> a -> c;
 (.) f g x = f (g x);
 
@@ -7,8 +13,25 @@
 id : a -> a;
 id x = x;
 
+head : List a -> Maybe a;
+head xs = case xs of
+  Nil -> Nothing,
+  Cons x xs -> Just x;
+
+tail : List a -> Maybe (List a);
+tail xs = case xs of
+  Nil -> Nothing,
+  Cons x xs -> Just xs;
+
+null : List a -> Bool;
+null xs = case xs of
+  Nil -> True,
+  Cons x xs -> False;
+
 not : Bool -> Bool;
-not b = if b then False else True;
+not b = case b of
+  True -> False,
+  False -> True;
 
 (=/=) : a -> a -> Bool;
 (=/=) x y = not (x == y);
@@ -63,12 +86,11 @@ odd : Int -> Bool;
 odd x = x % 2 =/= 0;
 
 (++) : [a] -> [a] -> [a];
-(++) xs ys =
-  if null xs
-  then ys
-  else head xs :: tail xs ++ ys;
+(++) xs ys = case xs of
+  Nil -> ys,
+  Cons x xs -> x :: (xs ++ ys);  
 
-(!) : [a] -> Int -> a;
+(!) : [a] -> Int -> Maybe a;
 (!) xs i =
   if i == 0
   then head xs

@@ -121,7 +121,6 @@ infer (Case t cases) = do
     Nothing -> throwError $ UnknownConstructor con1
 
 infer (LitInt _) = return tyInt
-infer (LitBool _) = return tyBool
 infer (LitChar _) = return tyChar
 
 infer (LitList xs) = do
@@ -282,7 +281,6 @@ typeAs (Var x) t = lift $ do
       t ~~ t'
   
 typeAs (LitInt n) t = lift $ tyInt ~~ t
-typeAs (LitBool b) t = lift $ tyBool ~~ t
 typeAs (LitChar c) t = lift $ tyChar ~~ t
 
 typeAs (LitList xs) t = do

@@ -170,6 +170,3 @@ makeRenamer t = snd $ execState (traverse mk t) (allVars, [])
             Just n -> return ()
             Nothing -> put (rest, (v, TyVar new) : existing)
 
-{-checkDataType :: DataType -> DataTypes -> Bool
-checkDataType (DataType params constrs) env = all checkConstr constrs
-  where checkConstr (DataConstructor name args) = _-}

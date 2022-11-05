@@ -26,12 +26,9 @@ data Term = CVar Index
           | CFix Term
           | CIf Term Term Term
           | CInt Int
-          | CBool Bool
           | CChar Char
           | CConstr Ident
           | CCase Term [(Ident, Term)]
-          | CNil
-          | CCons Term Term
           | CTuple [Term]
           | CBuiltin EvalType (Term -> Term)
 
@@ -42,13 +39,12 @@ instance Show Term where
   show (CFix t) = "fix " ++ show t
   show (CIf cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (CInt i) = "#" ++ show i
-  show (CBool b) = show b
   show (CChar c) = show c
   show (CConstr id) = id
   show (CCase t cs) = "case " ++ show t ++ " of [ " ++ intercalate ", " (map showCase cs) ++ " ]"
     where showCase (con, body) = con ++ " -> " ++ show body
-  show (CNil) = "[]"
-  show (CCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
+  -- show (CNil) = "[]"
+  -- show (CCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
   show (CTuple xs) = "(" ++ intercalate ", " (map show xs) ++ ")"
   show (CBuiltin Full f) = "<builtin>"
   show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
@@ -56,10 +52,8 @@ instance Show Term where
 
 instance Eq Term where
   (CInt x) == (CInt y) = x == y
-  (CBool x) == (CBool y) = x == y
   (CChar x) == (CChar y) = x == y
-  CNil == CNil = True
-  (CCons x xs) == (CCons y ys) = x == y && xs == ys
+  (CApp (CConstr x1) v1) == (CApp (CConstr x2) v2) = x1 == x2 && v1 == v2
   (CTuple xs) == (CTuple ys) = and $ zipWith (==) xs ys
   _ == _ = False
 
@@ -113,12 +107,11 @@ fromExpr (Case t cs) = do
   return $ CCase t' cases'
 
 fromExpr (LitInt n) = return $ CInt n
-fromExpr (LitBool b) = return $ CBool b
 fromExpr (LitChar c) = return $ CChar c
 
 fromExpr (LitList xs) = do
   xs' <- mapM fromExpr xs
-  return $ foldr CCons CNil xs'
+  return $ list2clist xs'
 
 fromExpr (LitTuple xs) = do
   xs' <- mapM fromExpr xs
@@ -132,13 +125,13 @@ with :: Ident -> Compiler a -> Compiler a
 with i = local (i:)
 
 list2clist :: [Term] -> Term
-list2clist = foldr CCons CNil
+list2clist = foldr (\h t -> CApp (CApp (CConstr "Cons") h) t) (CConstr "Nil")
 
 clist2list :: Term -> Maybe [Term]
-clist2list (CCons h t) = do
+clist2list (CApp (CApp (CConstr "Cons") h) t) = do
   rest <- clist2list t
   return $ h : rest
-clist2list CNil = return []
+clist2list (CConstr "Nil") = return []
 clist2list _ = Nothing
 
 class Value a where
@@ -150,18 +143,20 @@ instance Value Int where
   fromTerm (CInt n) = n
 
 instance Value Bool where
-  toTerm b = CBool b
-  fromTerm (CBool b) = b
+  toTerm b = CConstr (show b)
+  
+  fromTerm (CConstr "True") = True
+  fromTerm (CConstr "False") = False
 
 instance Value Char where
   toTerm c = CChar c
   fromTerm (CChar c) = c
 
 instance Value a => Value [a] where
-  toTerm xs = foldr CCons CNil (map toTerm xs)
+  toTerm xs = list2clist (map toTerm xs)
 
-  fromTerm (CCons h t) = fromTerm h : fromTerm t
-  fromTerm CNil = []
+  fromTerm (CApp (CApp (CConstr "Cons") h) t) = fromTerm h : fromTerm t
+  fromTerm (CConstr "Nil") = []
 
 instance (Value a, Value b) => Value (a -> b) where
   toTerm f = CBuiltin Full $ \t -> toTerm (f (fromTerm t))
