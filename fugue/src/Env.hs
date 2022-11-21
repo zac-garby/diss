@@ -12,6 +12,7 @@ import Compiler
 data Environment = Environment
   { terms :: [(String, (Scheme, Term))]
   , types :: DataTypes }
+  deriving Show
 
 defineTerm :: String -> Scheme -> Term -> Environment -> Environment
 defineTerm name sch val (Environment terms types) =

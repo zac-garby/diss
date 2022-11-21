@@ -1,11 +1,16 @@
-module Pretty ( prettyTerm
+module Pretty ( prettyExpr
+              , prettyTerm
+              , prettyTerm'
               , prettyType
               , prettyScheme
               , prettyTypes
-              , prettyDataTypes ) where
+              , prettyDataTypes
+              , prettyFunction
+              , prettyExample ) where
 
 import Data.List
 import Data.Char
+import Data.Maybe
 
 import Compiler
 import Types
@@ -13,6 +18,30 @@ import Holes
 import Env
 import Parser
 import Infer
+import Synthesis
+
+-- a pretty-printer for expressions.
+-- they will be outputted in a way which can be parsed back in.
+prettyExpr :: Expr -> String
+prettyExpr (Var i) = i
+prettyExpr (App f x) = prettyExpr f ++ " " ++ bracketExpr x
+prettyExpr (Abs x body) = "\\" ++ x ++ " -> " ++ prettyExpr body
+prettyExpr (Let x val body) = "let " ++ x ++ " = " ++ prettyExpr val ++ " in " ++ prettyExpr body
+prettyExpr (LetRec x val body) = "let rec " ++ x ++ " = " ++ prettyExpr val ++ " in " ++ prettyExpr body
+prettyExpr (If cond t f) = "if " ++ prettyExpr cond ++ " then " ++ prettyExpr t ++ " else " ++ prettyExpr f
+prettyExpr (Case cond cases) = "case " ++ prettyExpr cond ++ " of "
+  ++ intercalate ", " [ intercalate " " (x:xs) ++ " -> " ++ prettyExpr body | (x, xs, body) <- cases ]
+prettyExpr (LitInt i) = show i
+prettyExpr (LitList xs) = "[" ++ intercalate ", " (map prettyExpr xs) ++ "]"
+prettyExpr (LitTuple xs) = "(" ++ intercalate ", " (map prettyExpr xs) ++ ")"
+prettyExpr (LitChar c) = show c
+prettyExpr (TypeSpec e ty) = bracketExpr e ++ " : " ++ prettyType ty
+prettyExpr (Hole i) = show i ++ "?"
+
+bracketExpr :: Expr -> String
+bracketExpr ex@(App f x) = "(" ++ prettyExpr ex ++ ")"
+bracketExpr ex@(TypeSpec e t) = "(" ++ prettyExpr ex ++ ")"
+bracketExpr ex = prettyExpr ex
 
 -- a pretty-printer for terms.
 -- if the term is not designed to be user-visible, Nothing is returned
@@ -24,7 +53,6 @@ prettyTerm (CApp fn arg) = do
   fn' <- prettyTerm fn
   arg' <- bracketTerm arg
   Just $ fn' ++ " " ++ arg'
-prettyTerm (CConstr "Nil") = Just $ "[]"
 {-prettyTerm c@(CCons (CChar _) _) = do
   cs <- clist2list c
   return $ colour 32 ("\"" ++ map (\(CChar c) -> c) cs ++ "\"")
@@ -36,6 +64,9 @@ prettyTerm (CTuple xs) = do
   xs' <- mapM prettyTerm xs
   return $ "(" ++ intercalate ", " xs' ++ ")"
 prettyTerm _ = Nothing
+
+prettyTerm' :: Term -> String
+prettyTerm' t = fromMaybe (show t) (prettyTerm t)
 
 bracketTerm :: Term -> Maybe String
 bracketTerm t@(CApp _ _) = do
@@ -70,6 +101,15 @@ prettyTypes env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (ppr
                                    " : " ++ prettyScheme sch
                                  | (name, (sch, _)) <- env ]
   where longestName = maximum (map (length . fst) env)
+
+prettyFunction :: Ident -> Function -> String
+prettyFunction name (Function args ret body egs) =
+  name ++ " : " ++ intercalate " -> " (map prettyType (map snd args ++ [ret])) ++ "\n" ++
+  "  { " ++ intercalate ";\n    " (map prettyExample egs) ++ " }\n" ++
+  name ++ " " ++ intercalate " " (map fst args) ++ " = " ++ prettyExpr body
+
+prettyExample :: Example -> String
+prettyExample (Eg args ret) = intercalate ", " (map prettyTerm' args) ++ " => " ++ prettyTerm' ret
 
 prettyDataTypes :: [(Ident, DataType)] -> String
 prettyDataTypes dts = intercalate "\n" $ do

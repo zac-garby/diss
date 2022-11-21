@@ -145,6 +145,13 @@ loadFile file = do
   s <- liftIO $ readFile file
   p <- parseProgram file s ?? SyntaxErr
   typecheckProgram p
+  
+  env <- get
+  let (expr, fns) = test env
+  liftIO $ do
+    putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
+    putStrLn ""
+    putStrLn $ "synth'd = " ++ prettyExpr expr
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
