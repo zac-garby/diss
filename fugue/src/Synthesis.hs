@@ -2,6 +2,7 @@ module Synthesis where
 
 import Data.Maybe
 import Data.List
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Lazy
 import Debug.Trace
@@ -10,6 +11,7 @@ import Parser
 import Compiler
 import Types
 import Env
+import Infer
 
 data Context = Context
   { env :: Environment
@@ -41,50 +43,75 @@ synthesise env goal egs =
 synth :: [Type] -> Type -> Synth Ident
 synth argTypes ret = do
   egs <- asks examples
-  traceM $ "synth: " ++ intercalate " -> " (map show $ argTypes ++ [ret])
   
   args <- forM argTypes $ \t -> do
     name <- fresh
     return (name, t)
 
-  case sharedConstr egs of
-    Just con -> synthCommonConstr argTypes ret con
-    Nothing -> defineFunction $ Function { args = args
-                                        , ret = ret
-                                        , body = LitInt (-1)
-                                        , egs = egs }
+  begin
+    `orElse` synthTrivial args ret
+    `orElse` synthCommonConstr args ret
+    `orElse` defineFunction (Function args ret (Hole 0) egs)
 
-synthCommonConstr :: [Type] -> Type -> Ident -> Synth Ident
-synthCommonConstr argTypes retType con = do
+synthTrivial :: [(Ident, Type)] -> Type -> Synth (Maybe Ident)
+synthTrivial args retType = do
   egs <- asks examples
-  ts <- asks (terms . env)
+  go egs 0
+  where go egs n
+          | n >= length args = return Nothing
+          | all (\(Eg egArgs egRes) -> egArgs !! n == egRes) egs = do
+            f <- defineFunction $ Function { args = args
+                                          , ret = retType
+                                          , body = Var (fst $ args !! n)
+                                          , egs = egs }
+            return $ Just f
+          | otherwise = go egs (n + 1)
 
-  Forall _ conTy <- lookupType' con
-  let (conArgTys, _) = unfoldFn conTy
-
-  let (args, d) = unzip [ (args, deconstruct o) | Eg args o <- egs ]
-      (cons, d') = unzip d
-      d'T = transpose d'
-      conEgs = [ zipWith Eg args d | d <- d'T ]
-
-  fns <- forM (zip conArgTys conEgs) $ \(conArgTy, egs) -> do
-    withExamples egs (synth argTypes conArgTy)
-
-  argNames <- forM argTypes (const fresh)
-
-  let body = applyMany $ (Var con)
-        : [ applyMany $ Var fn : map Var argNames | fn <- fns ]
+synthCommonConstr :: [(Ident, Type)] -> Type -> Synth (Maybe Ident)
+synthCommonConstr args retType = do
+  egs <- asks examples
   
-  defineFunction $ Function { args = zip argNames argTypes
-                            , ret = retType
-                            , body = body
-                            , egs = egs }
+  case sharedConstr egs of
+    Nothing -> return Nothing
+    Just con -> do
+      egs <- asks examples
+      ts <- asks (terms . env)
+  
+      Forall _ conTy <- lookupType' con
+      let (conArgTys, _) = unfoldFn (specialiseConstructor conTy retType)
+          (conArgs, d) = unzip [ (args, deconstruct o) | Eg args o <- egs ]
+          (cons, d') = unzip d
+          d'T = transpose d'
+          conEgs = [ zipWith Eg conArgs d | d <- d'T ]
+          (argNames, argTypes) = unzip args
+
+      fns <- forM (zip conArgTys conEgs) $ \(conArgTy, egs) -> do
+        withExamples egs (synth argTypes conArgTy)
+
+      let body = applyMany $ (Var con)
+                 : [ applyMany $ Var fn : map Var argNames | fn <- fns ]
+  
+      f <- defineFunction $ Function { args = args
+                                    , ret = retType
+                                    , body = body
+                                    , egs = egs }
+      return $ Just f
 
 defineFunction :: Function -> Synth Ident
 defineFunction f = do
   name <- fresh
   modify $ \(ns, fs) -> (ns, (name, f) : fs)
   return name
+
+infixr `orElse`
+orElse :: Synth (Maybe Ident) -> Synth Ident -> Synth Ident
+orElse a b = do
+  i <- a
+  case i of
+    Nothing -> b
+    Just x -> return x
+
+begin = return Nothing
  
 assemble :: Function -> Expr
 assemble (Function args _ body _) = foldr Abs body (map fst args)
@@ -94,6 +121,16 @@ fresh = do
   name <- gets (head . fst)
   modify $ \(n:ns, fs) -> (ns, fs)
   return name
+
+specialiseConstructor :: Type -> Type -> Type
+specialiseConstructor conTy ret = case runExcept (runUnify u) of
+  Left err -> error "unexpected error specialising constructor"
+  Right s -> sub s genTy'
+  where (argTys, conRetTy) = unfoldFn conTy
+        varNames = take (length argTys) [ "*temp" ++ show i | i <- [0..] ]
+        genTy = foldr (-->) ret (map TyVar varNames)
+        (conTy', genTy') = renameToDistinct conTy genTy
+        u = unify genTy' conTy'
 
 lookupType :: Ident -> Synth (Maybe Scheme)
 lookupType x = do
@@ -137,3 +174,7 @@ unfoldFn t = ([], t)
 test env = synthesise env (tyInt --> tyList tyInt --> tyList tyInt)
   [ Eg [toTerm (0 :: Int), toTerm ([1] :: [Int])] (toTerm ([0, 0, 1] :: [Int]))
   , Eg [toTerm (2 :: Int), toTerm ([] :: [Int])] (toTerm ([2, 2] :: [Int])) ]
+
+test' env = synthesise env (tyInt --> tyList tyInt --> tyList tyInt)
+  [ Eg [toTerm (0 :: Int), toTerm ([1] :: [Int])] (toTerm ([1] :: [Int]))
+  , Eg [toTerm (2 :: Int), toTerm ([] :: [Int])] (toTerm ([] :: [Int])) ]

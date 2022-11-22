@@ -35,7 +35,7 @@ defaultEnv = Environment
   , ("__mod", intBinOp mod)
   , ("__eq", ( finalise $ a --> a --> tyBool
              , CBuiltin Full $ \x ->
-                                 CBuiltin Full $ \y -> toTerm (x == y)))
+                 CBuiltin Full $ \y -> toTerm (x == y)))
   , ("__lt", intCompOp (<))
   , ("__gt", intCompOp (>))
   , ("__lte", intCompOp (<=))

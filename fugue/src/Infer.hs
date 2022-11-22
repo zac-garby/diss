@@ -2,7 +2,9 @@
 
 module Infer ( TypeError (..)
              , BoundHole (..)
-             , typecheck ) where
+             , typecheck
+             , unify
+             , runUnify ) where
 
 import qualified Control.Monad.State.Lazy as S
 import qualified Control.Monad.Writer as W

@@ -53,7 +53,8 @@ instance Show Term where
 instance Eq Term where
   (CInt x) == (CInt y) = x == y
   (CChar x) == (CChar y) = x == y
-  (CApp (CConstr x1) v1) == (CApp (CConstr x2) v2) = x1 == x2 && v1 == v2
+  (CConstr x) == (CConstr y) = x == y
+  (CApp x1 v1) == (CApp x2 v2) = x1 == x2 && v1 == v2
   (CTuple xs) == (CTuple ys) = and $ zipWith (==) xs ys
   _ == _ = False
 

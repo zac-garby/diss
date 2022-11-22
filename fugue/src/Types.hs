@@ -22,7 +22,8 @@ module Types ( GenericType (..)
              , finalise
              , allVars
              , rename
-             , makeRenamer )where
+             , makeRenamer
+             , renameToDistinct ) where
 
 import Control.Monad.State.Lazy
 import Data.List
@@ -170,3 +171,11 @@ makeRenamer t = snd $ execState (traverse mk t) (allVars, [])
             Just n -> return ()
             Nothing -> put (rest, (v, TyVar new) : existing)
 
+renameToDistinct :: Type -> Type -> (Type, Type)
+renameToDistinct t1 t2
+  | null inCommon = (t1, t2)
+  | otherwise = renameToDistinct (sub s t1) t2
+  where fv1 = freeVars t1
+        fv2 = freeVars t2
+        inCommon = intersect fv1 fv2
+        s = [(v, TyVar (v ++ "'")) | v <- inCommon]

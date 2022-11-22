@@ -105,7 +105,7 @@ prettyTypes env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (ppr
 prettyFunction :: Ident -> Function -> String
 prettyFunction name (Function args ret body egs) =
   name ++ " : " ++ intercalate " -> " (map prettyType (map snd args ++ [ret])) ++ "\n" ++
-  "  { " ++ intercalate ";\n    " (map prettyExample egs) ++ " }\n" ++
+  "  { " ++ intercalate "\n  ; " (map prettyExample egs) ++ " }\n" ++
   name ++ " " ++ intercalate " " (map fst args) ++ " = " ++ prettyExpr body
 
 prettyExample :: Example -> String
