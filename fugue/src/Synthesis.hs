@@ -178,23 +178,6 @@ collapse fns app@(App f x) = case unfoldApp app of
     Just fn -> app
   _ -> app
 
-calledBy :: Expr -> [Ident]
-calledBy app@(App _ _) = case unfoldApp app of
-  (Var x, xs) -> x : concatMap calledBy xs
-  (f, xs) -> calledBy f ++ concatMap calledBy xs
-calledBy (Abs _ a) = calledBy a
-calledBy (Let _ a b) = calledBy a ++ calledBy b
-calledBy (LetRec _ a b) = calledBy a ++ calledBy b
-calledBy (If a b c) = calledBy a ++ calledBy b ++ calledBy c
-calledBy (Case a cs) = calledBy a ++ concatMap (\(_,_,b) -> calledBy b) cs
-calledBy (LitList xs) = concatMap calledBy xs
-calledBy (LitTuple xs) = concatMap calledBy xs
-calledBy (TypeSpec a _) = calledBy a
-calledBy _ = []
-
-calls :: Ident -> Expr -> Bool
-calls i e = i `elem` calledBy e
-
 fresh :: Synth Ident
 fresh = do
   name <- gets (head . fst)
@@ -248,11 +231,6 @@ sharedConstr xs = do
     return y
   else
     Nothing
-  {-
-sharedConstr xs = if all (== y) ys then Just y else Nothing
-  where outputs = [ o | Eg _ o <- xs ]
-        (y:ys) = [ i | (i, _) <- map deconstruct outputs ]
--}
 
 applyMany :: [Expr] -> Expr
 applyMany = foldl1 App
@@ -268,6 +246,56 @@ unfoldApp (App f x) =
   let (f', args) = unfoldApp f
   in (f', args ++ [x])
 unfoldApp e = (e, [])
+
+unwind :: Functions -> Expr -> Expr
+unwind fns (Var x) = case lookup x fns of -- inline zero-arity functions but no others
+    Just (Function { body = body }) -> unwind fns body
+    _ -> Var x
+unwind fns app@(App e1 e2) = case unfoldApp app of
+    (Var x, args) -> case lookup x fns of
+      Just fn -> if canInline x fn then inline fn args fns else app'
+      Nothing -> app'
+    _ -> app'
+  where app' = App (unwind fns e1) (unwind fns e2)
+unwind fns (Abs x e) = Abs x (unwind fns e)
+unwind fns (Let x e1 e2) = Let x (unwind fns e1) (unwind fns e2)
+unwind fns (LetRec x e1 e2) = LetRec x (unwind fns e1) (unwind fns e2)
+unwind fns (If e1 e2 e3) = If (unwind fns e1) (unwind fns e2) (unwind fns e3)
+unwind fns (Case e cases) = Case (unwind fns e)
+                                 [ (x, xs, unwind fns b)
+                                 | (x, xs, b) <- cases ]
+unwind fns (LitInt n) = LitInt n
+unwind fns (LitList xs) = LitList (map (unwind fns) xs)
+unwind fns (LitTuple xs) = LitTuple (map (unwind fns) xs)
+unwind fns (LitChar c) = LitChar c
+unwind fns (TypeSpec e t) = TypeSpec (unwind fns e) t
+unwind fns (Hole n) = Hole n
+
+inline :: Function -> [Expr] -> Functions -> Expr
+inline (Function { args = fnArgs, body = fnBody }) args fns =
+  let fnBody' = unwind fns fnBody
+      arguments = zip (map fst fnArgs) args
+  in subExpr arguments fnBody'
+
+canInline :: Ident -> Function -> Bool
+canInline fnName (Function { body = body }) = not (body `calls` fnName)
+
+calledBy :: Expr -> [Ident]
+calledBy app@(App _ _) = case unfoldApp app of
+  (Var x, xs) -> x : concatMap calledBy xs
+  (f, xs) -> calledBy f ++ concatMap calledBy xs
+calledBy (Abs _ a) = calledBy a
+calledBy (Let _ a b) = calledBy a ++ calledBy b
+calledBy (LetRec _ a b) = calledBy a ++ calledBy b
+calledBy (If a b c) = calledBy a ++ calledBy b ++ calledBy c
+calledBy (Case a cs) = calledBy a ++ concatMap (\(_,_,b) -> calledBy b) cs
+calledBy (LitList xs) = concatMap calledBy xs
+calledBy (LitTuple xs) = concatMap calledBy xs
+calledBy (TypeSpec a _) = calledBy a
+calledBy _ = []
+
+calls :: Expr -> Ident -> Bool
+calls e i = i `elem` calledBy e
 
 test env = synthesise env (tyList tyInt --> tyInt)
   [ Eg [toTerm ([1, 2] :: [Int])] (toTerm (1 :: Int))

@@ -12,6 +12,7 @@ module Parser ( Expr (..)
               , parseRepl
               , pprintIdent
               , foldExpr
+              , subExpr
               , isComplete
               , holesIn ) where
 
@@ -399,6 +400,31 @@ foldExpr c l a (LitList xs) = foldr c a (map (foldExpr c l a) xs)
 foldExpr c l a (LitTuple xs) = foldr c a (map (foldExpr c l a) xs)
 foldExpr c l a (TypeSpec e _) = foldExpr c l a e
 foldExpr c l a t = l t
+
+subExpr :: [(Ident, Expr)] -> Expr -> Expr
+subExpr s (Var x) = case lookup x s of
+  Just e -> e
+  Nothing -> Var x
+subExpr s (App e1 e2) = App (subExpr s e1) (subExpr s e2)
+subExpr s (Abs x e) = Abs x (subExpr (unbind x s) e)
+subExpr s (Let x e1 e2) = Let x (subExpr s e1) (subExpr (unbind x s) e2)
+subExpr s (LetRec x e1 e2) = LetRec x (subExpr (unbind x s) e1) (subExpr (unbind x s) e2)
+subExpr s (If e1 e2 e3) = If (subExpr s e1) (subExpr s e2) (subExpr s e3)
+subExpr s (Case e1 cases) = Case (subExpr s e1)
+                                 [ (c, xs, subExpr (unbindMany xs s) b)
+                                 | (c, xs, b) <- cases ]
+subExpr s (LitInt n) = LitInt n
+subExpr s (LitList es) = LitList (map (subExpr s) es)
+subExpr s (LitTuple es) = LitTuple (map (subExpr s) es)
+subExpr s (LitChar c) = LitChar c
+subExpr s (TypeSpec e t) = TypeSpec (subExpr s e) t
+subExpr s (Hole n) = Hole n
+
+unbind :: Ident -> [(Ident, Expr)] -> [(Ident, Expr)]
+unbind x = filter ((/= x) . fst)
+
+unbindMany :: [Ident] -> [(Ident, Expr)] -> [(Ident, Expr)]
+unbindMany xs = filter (not . (`elem` xs) . fst)
 
 isComplete :: Expr -> Bool
 isComplete = null . holesIn

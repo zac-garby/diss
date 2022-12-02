@@ -151,7 +151,7 @@ loadFile file = do
     Just (i, fns) -> do
       putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
       putStrLn ""
-      putStrLn $ " => " ++ i
+      putStrLn $ " => " ++ prettyExpr (unwind fns (Var i))
     Nothing -> putStrLn "synthesis failed! :o"
 
 typecheckProgram :: Program -> Interactive ()
