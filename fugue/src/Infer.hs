@@ -11,6 +11,7 @@ import qualified Control.Monad.Writer as W
 
 import Data.List
 import Data.Maybe
+import Control.Monad
 import Control.Monad.Except
 import Control.Monad.RWS.Lazy
 import Control.Monad.State.Lazy (StateT, State)

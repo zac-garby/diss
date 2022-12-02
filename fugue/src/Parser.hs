@@ -6,6 +6,7 @@ module Parser ( Expr (..)
               , Program
               , ops
               , parseExpr
+              , parseExpr'
               , parseProgram
               , parseType
               , parseRepl
@@ -89,7 +90,14 @@ parseExpr = parseWrapper (only expr)
 parseType = parseWrapper (only typeExpr)
 parseRepl = parseWrapper (only replInput)
 
+parseExpr' = parseWrapper' expr
+
 only p = whitespace *> p <* whitespace <* eof
+
+parseWrapper' :: Parser a -> String -> a
+parseWrapper' p s = case runParser p 0 "parseWrapper'" s of
+  Left e -> error (show e)
+  Right a -> a
 
 parseWrapper :: Parser a -> FilePath -> String -> Except ParseError a
 parseWrapper p f s = case runParser p 0 f s of

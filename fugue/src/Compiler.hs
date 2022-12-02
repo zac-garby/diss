@@ -8,6 +8,7 @@ module Compiler ( Term (..)
                 , compile ) where
 
 import Data.List
+import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Except
 import Debug.Trace

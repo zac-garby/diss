@@ -147,11 +147,12 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  let (expr, fns) = test env
-  liftIO $ do
-    putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
-    putStrLn ""
-    putStrLn $ "synth'd = " ++ prettyExpr expr
+  liftIO $ case test env of
+    Just (i, fns) -> do
+      putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
+      putStrLn ""
+      putStrLn $ " => " ++ i
+    Nothing -> putStrLn "synthesis failed! :o"
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do

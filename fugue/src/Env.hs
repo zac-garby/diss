@@ -1,7 +1,9 @@
 module Env ( Environment (..)
            , defaultEnv
            , defineTerm
-           , defineDataType ) where
+           , defineDataType
+           , lookupTerm
+           , lookupDataType ) where
 
 import Data.Char
 
@@ -21,6 +23,12 @@ defineTerm name sch val (Environment terms types) =
 defineDataType :: String -> DataType -> Environment -> Environment
 defineDataType name dt (Environment terms types) =
   Environment terms (insertKV name dt types)
+
+lookupTerm :: String -> Environment -> Maybe (Scheme, Term)
+lookupTerm name (Environment terms _) = lookup name terms
+
+lookupDataType :: String -> Environment -> Maybe DataType
+lookupDataType name (Environment _ types) = lookup name types
 
 a = TyVar "a"
 b = TyVar "b"
