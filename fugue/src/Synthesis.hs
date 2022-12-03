@@ -210,7 +210,7 @@ deconstruct (CConstr i) = Just (i, [])
 deconstruct (CApp l r) = do
   (i, ts) <- deconstruct l
   return (i, ts ++ [r])
---deconstruct (CInt n) = deconstruct (intToSucs n)
+deconstruct (CInt n) = deconstruct (intToSucs n)
 deconstruct t = Nothing
 
 deconstruct' :: Term -> (Ident, [Term])
@@ -323,13 +323,32 @@ calledBy (LitTuple xs) = concatMap calledBy xs
 calledBy (TypeSpec a _) = calledBy a
 calledBy _ = []
 
+allCalledBy :: Ident -> Functions -> [Ident]
+allCalledBy x fns = go x fns []
+  where go :: Ident -> Functions -> [Ident] -> [Ident]
+        go x fns visited
+          | x `elem` visited = visited
+          | otherwise = x : case lookup x fns of
+              Nothing -> []
+              Just (Function { body = body }) ->
+                let newCalls = calledBy body \\ (x : visited)
+                in foldl (\vs call -> go call fns vs) visited newCalls
+
+removeRedundant :: Ident -> Functions -> Functions
+removeRedundant x fns = filter ((`elem` used) . fst) fns
+  where used = allCalledBy x fns
+
 calls :: Expr -> Ident -> Bool
 calls e i = i `elem` calledBy e
 
 test env = synthesise env (tyList tyInt --> tyInt)
   [ Eg [toTerm ([1, 2] :: [Int])] (toTerm (1 :: Int))
-  , Eg [toTerm ([1, 2, 3] :: [Int])] (toTerm (1 :: Int)) ]
+  , Eg [toTerm ([0, 2, 3] :: [Int])] (toTerm (0 :: Int)) ]
 
 test' env = synthesise env (tyInt --> tyList tyInt --> tyList tyInt)
   [ Eg [toTerm (0 :: Int), toTerm ([1] :: [Int])] (toTerm ([0, 0, 1] :: [Int]))
   , Eg [toTerm (2 :: Int), toTerm ([] :: [Int])] (toTerm ([2, 2] :: [Int])) ]
+
+test'' env = synthesise env (tyInt --> tyBool)
+  [ Eg [CInt 0] (toTerm False)
+  , Eg [CInt 1] (toTerm True) ]
