@@ -149,9 +149,10 @@ loadFile file = do
   env <- get
   liftIO $ case test env of
     Just (i, fns) -> do
-      putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
+      let fns' = unwindFrom i fns
+      putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns')
       putStrLn ""
-      putStrLn $ " => " ++ prettyExpr (unwind fns (Var i))
+      putStrLn $ " => " ++ i
     Nothing -> putStrLn "synthesis failed! :o"
 
 typecheckProgram :: Program -> Interactive ()

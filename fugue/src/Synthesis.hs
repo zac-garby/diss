@@ -47,8 +47,6 @@ synth :: [Type] -> Type -> Synth Ident
 synth argTypes ret = do
   fns <- gets snd
   egs <- asks examples
-
-  traceM $ "synth: " ++ intercalate " -> " (map show argTypes) ++ " -> " ++ show ret
   
   args <- forM argTypes $ \t -> do
     name <- fresh
@@ -247,38 +245,69 @@ unfoldApp (App f x) =
   in (f', args ++ [x])
 unfoldApp e = (e, [])
 
-unwind :: Functions -> Expr -> Expr
-unwind fns (Var x) = case lookup x fns of -- inline zero-arity functions but no others
-    Just (Function { body = body }) -> unwind fns body
-    _ -> Var x
-unwind fns app@(App e1 e2) = case unfoldApp app of
-    (Var x, args) -> case lookup x fns of
-      Just fn -> if canInline x fn then inline fn args fns else app'
-      Nothing -> app'
-    _ -> app'
-  where app' = App (unwind fns e1) (unwind fns e2)
-unwind fns (Abs x e) = Abs x (unwind fns e)
-unwind fns (Let x e1 e2) = Let x (unwind fns e1) (unwind fns e2)
-unwind fns (LetRec x e1 e2) = LetRec x (unwind fns e1) (unwind fns e2)
-unwind fns (If e1 e2 e3) = If (unwind fns e1) (unwind fns e2) (unwind fns e3)
-unwind fns (Case e cases) = Case (unwind fns e)
-                                 [ (x, xs, unwind fns b)
-                                 | (x, xs, b) <- cases ]
-unwind fns (LitInt n) = LitInt n
-unwind fns (LitList xs) = LitList (map (unwind fns) xs)
-unwind fns (LitTuple xs) = LitTuple (map (unwind fns) xs)
-unwind fns (LitChar c) = LitChar c
-unwind fns (TypeSpec e t) = TypeSpec (unwind fns e) t
-unwind fns (Hole n) = Hole n
+type Unwind = State Functions
 
-inline :: Function -> [Expr] -> Functions -> Expr
-inline (Function { args = fnArgs, body = fnBody }) args fns =
-  let fnBody' = unwind fns fnBody
-      arguments = zip (map fst fnArgs) args
-  in subExpr arguments fnBody'
+unwindFrom :: Ident -> Functions -> Functions
+unwindFrom x fns = execState (unwindFn x) fns
+
+unwindFn :: Ident -> Unwind ()
+unwindFn f = do
+  Function args ret body egs <- lookupU' f
+  body' <- unwind body
+  modify (insertFn f (Function args ret body' egs))
+
+unwind :: Expr -> Unwind Expr
+unwind (Var x) = do
+  fn <- lookupU x
+  case fn of
+    Just (Function { body = body, args = [] }) -> unwind body
+    _ -> return $ Var x
+unwind app@(App e1 e2) = case unfoldApp app of
+    (Var x, args) -> do
+      fn <- lookupU x
+      case fn of
+        Just fn -> if canInline x fn then inline x args else app'
+        Nothing -> app'
+    _ -> app'
+  where app' = App <$> unwind e1 <*> unwind e2
+unwind (Abs x e) = Abs x <$> unwind e
+unwind (Let x e1 e2) = Let x <$> unwind e1 <*> unwind e2
+unwind (LetRec x e1 e2) = LetRec x <$> unwind e1 <*> unwind e2
+unwind (If e1 e2 e3) = If <$> unwind e1 <*> unwind e2 <*> unwind e3
+unwind (Case e cases) = do
+  cases' <- forM cases $ \(x, xs, b) -> do
+    b' <- unwind b
+    return (x, xs, b')
+    
+  Case <$> unwind e <*> return cases'
+unwind (LitInt n) = return $ LitInt n
+unwind (LitList xs) = LitList <$> mapM unwind xs
+unwind (LitTuple xs) = LitTuple <$> mapM unwind xs
+unwind (LitChar c) = return $ LitChar c
+unwind (TypeSpec e t) = TypeSpec <$> unwind e <*> return t
+unwind (Hole n) = return $ Hole n
+
+inline :: Ident -> [Expr] -> Unwind Expr
+inline f args = do
+  unwindFn f
+  Function fnArgs _ fnBody _ <- lookupU' f
+  let arguments = zip (map fst fnArgs) args
+  return $ subExpr arguments fnBody
+
+lookupU :: Ident -> Unwind (Maybe Function)
+lookupU f = fmap (lookup f) get
+
+lookupU' :: Ident -> Unwind Function
+lookupU' f = fmap fromJust (lookupU f)
 
 canInline :: Ident -> Function -> Bool
 canInline fnName (Function { body = body }) = not (body `calls` fnName)
+
+insertFn :: Ident -> Function -> Functions -> Functions
+insertFn x fn [] = []
+insertFn x fn ((x', fn'):xs)
+  | x == x' = (x, fn) : xs
+  | otherwise = (x', fn') : insertFn x fn xs
 
 calledBy :: Expr -> [Ident]
 calledBy app@(App _ _) = case unfoldApp app of
@@ -302,5 +331,5 @@ test env = synthesise env (tyList tyInt --> tyInt)
   , Eg [toTerm ([1, 2, 3] :: [Int])] (toTerm (1 :: Int)) ]
 
 test' env = synthesise env (tyInt --> tyList tyInt --> tyList tyInt)
-  [ Eg [toTerm (0 :: Int), toTerm ([1] :: [Int])] (toTerm ([1] :: [Int]))
-  , Eg [toTerm (2 :: Int), toTerm ([] :: [Int])] (toTerm ([] :: [Int])) ]
+  [ Eg [toTerm (0 :: Int), toTerm ([1] :: [Int])] (toTerm ([0, 0, 1] :: [Int]))
+  , Eg [toTerm (2 :: Int), toTerm ([] :: [Int])] (toTerm ([2, 2] :: [Int])) ]
