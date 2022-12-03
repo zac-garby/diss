@@ -24,6 +24,7 @@ evalStep t = evalAppAbs t
          <|> evalIf t
          <|> evalCase t
          <|> evalTuple t
+         <|> evalInt t
 
 evalAppAbs :: Term -> Maybe Term
 evalAppAbs (CApp (CAbs t12) v2) | isValue v2 = return $ shift (-1) ((0 --> shift 1 v2) t12)
@@ -77,11 +78,18 @@ evalTuple (CTuple (x:xs)) = case evalStep x of
     return $ CTuple (x : xs')
 evalTuple _ = Nothing
 
+evalInt :: Term -> Maybe Term
+evalInt (CConstr "Zero") = return $ CInt 0
+evalInt (CApp (CConstr "Suc") (CInt n)) = return $ CInt (1 + n)
+evalInt _ = Nothing
+
 match :: String -> Term -> Term -> Maybe [Term]
 match con (CApp f x) (CAbs b) = do
   args <- match con f b
   return $ args ++ [x]
 match con (CConstr con') b | con == con' = return []
+match "Zero" (CInt 0) b = return []
+match "Suc" (CInt n) b | n > 0 = return [CInt (n - 1)]
 match _ _ _ = Nothing
 
 isProper :: EvalType -> Term -> Bool
@@ -100,6 +108,8 @@ isValue (CIf _ _ _) = False
 isValue (CCase _ _) = False
 isValue (CInt _) = True
 isValue (CChar _) = True
+isValue (CConstr "Zero") = False
+isValue (CConstr "Suc") = False
 isValue (CConstr _) = True
 isValue (CTuple xs) = all isValue xs
 isValue (CBuiltin _ _) = True

@@ -61,9 +61,15 @@ defaultEnv = Environment
   , ("snd3", ( finalise $ tyTuple [a, b, c] --> b
              , CBuiltin WHNF $ \(CTuple [_,t,_]) -> t))
   , ("trd3", ( finalise $ tyTuple [a, b, c] --> c
-             , CBuiltin WHNF $ \(CTuple [_,_,t]) -> t)) ]
+             , CBuiltin WHNF $ \(CTuple [_,_,t]) -> t))
+  , ("Zero", ( finalise tyInt
+             , CConstr "Zero") )
+  , ("Suc", ( finalise $ tyInt --> tyInt
+            , CConstr "Suc" )) ]
 
-  []
+  [ ("Int", DataType []
+            [ DataConstructor "Zero" []
+            , DataConstructor "Suc" [tyInt]]) ]
 
 intBinOp :: (Int -> Int -> Int) -> (Scheme, Term)
 intBinOp f = ( finalise $ tyInt --> tyInt --> tyInt
