@@ -36,16 +36,17 @@ data Term = CVar Index
 instance Show Term where
   show (CVar i) = show i
   show (CAbs t) = "λ." ++ show t
-  show (CApp f x) = bracket (show f) ++ bracket (show x)
+  show (CApp f x) = case clist2list (CApp f x) of
+    Just xs -> "[" ++ intercalate ", " (map show xs) ++ "]"
+    Nothing -> bracket (show f) ++ bracket (show x)
   show (CFix t) = "fix " ++ show t
   show (CIf cond t f) = "if " ++ show cond ++ " then " ++ show t ++ " else " ++ show f
   show (CInt i) = "#" ++ show i
   show (CChar c) = show c
+  show (CConstr "Nil") = "[]"
   show (CConstr id) = id
   show (CCase t cs) = "case " ++ show t ++ " of [ " ++ intercalate ", " (map showCase cs) ++ " ]"
     where showCase (con, body) = con ++ " -> " ++ show body
-  -- show (CNil) = "[]"
-  -- show (CCons h t) = bracket (show h) ++ " :: " ++ bracket (show t)
   show (CTuple xs) = "(" ++ intercalate ", " (map show xs) ++ ")"
   show (CBuiltin Full f) = "<builtin>"
   show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
