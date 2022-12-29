@@ -109,7 +109,11 @@ prettyFunction name (Function args ret body egs) =
   name ++ " " ++ intercalate " " (map fst args) ++ " = " ++ prettyExpr body
 
 prettyExample :: Example -> String
-prettyExample (Eg args ret) = intercalate ", " (map prettyTerm' args) ++ " => " ++ prettyTerm' ret
+prettyExample (Eg args ret) = intercalate ", " (map prettyEgArg args) ++ " => " ++ prettyTerm' ret
+
+prettyEgArg :: Arg -> String
+prettyEgArg (Val v) = prettyTerm' v
+prettyEgArg (Thunk t i) = "<" ++ i ++ " | " ++ prettyTerm' t ++ ">"
 
 prettyDataTypes :: [(Ident, DataType)] -> String
 prettyDataTypes dts = intercalate "\n" $ do

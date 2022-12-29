@@ -28,7 +28,16 @@ data Function = Function
 
 type Functions = [(Ident, Function)]
 
-data Example = Eg [Term] Term
+-- an Arg represents an argument of an example, and is either a fully-evaluated term Val,
+-- or a thunk. If it is a thunk, it is a partially-evaluated term, along
+-- with the name of the function whose definition the evaluation is blocked by.
+data Arg = Val Term | Thunk Term Ident
+
+instance Show Arg where
+  show (Val t) = show t
+  show (Thunk t i) = "<" ++ i ++ " | " ++ show t ++ ">"
+
+data Example = Eg [Arg] Term
   deriving Show
 
 type Synth = MaybeT (StateT ([Ident], Functions) (Reader Context))
@@ -45,7 +54,6 @@ synthesise env goal egs =
 
 synth :: [Type] -> Type -> Synth Ident
 synth argTypes ret = do
-  fns <- gets snd
   egs <- asks examples
   
   args <- forM argTypes $ \t -> do
@@ -72,7 +80,7 @@ synthTrivial args retType = do
   go egs 0
   where go egs n
           | n >= length args = exit
-          | all (\(Eg egArgs egRes) -> egArgs !! n == egRes) egs =
+          | all (\(Eg egArgs egRes) -> egArgs !! n `hasVal` egRes) egs =
             defineFunction $ Function { args = args
                                       , ret = retType
                                       , body = Var (fst $ args !! n)
@@ -117,6 +125,7 @@ synthSplitOn splitOn args retType = do
   egs <- asks examples
   e <- asks env
 
+  guard (argIsThunk splitOn egs)
   let (splitArg, splitTy) = args !! splitOn
 
   case splitTy of
@@ -132,9 +141,9 @@ synthSplitOn splitOn args retType = do
             return (name, ty)
           
           let allArgs = args ++ conArgs
-              egs' = [ Eg (ins ++ conArgs') out
+              egs' = [ Eg (ins ++ (map Val conArgs')) out
                      | Eg ins out <- egs
-                     , let (con', conArgs') = deconstruct' (ins !! splitOn)
+                     , let (con', conArgs') = deconstruct' (fromVal (ins !! splitOn))
                      , con == con']
               
           g <- withExamples egs' (synth (map snd allArgs) retType)
@@ -148,6 +157,21 @@ synthSplitOn splitOn args retType = do
 
       Nothing -> fail "non-datatype or undefined"
     _ -> fail "can't split on non-ADT"
+
+hasVal :: Arg -> Term -> Bool
+hasVal (Val v) t = v == t
+hasVal (Thunk _ _) t = False
+
+fromVal :: Arg -> Term
+fromVal (Val v) = v
+
+isThunk :: Arg -> Bool
+isThunk (Val _) = False
+isThunk (Thunk _ _) = True
+
+argIsThunk :: Int -> [Example] -> Bool
+argIsThunk n [] = False
+argIsThunk n ((Eg args _):_) = isThunk (args !! n)
 
 defineFunction :: Function -> Synth Ident
 defineFunction f = do
@@ -165,7 +189,7 @@ try (x:xs) = let x' = runMaybeT x in MaybeT $ do
   case m of
     Nothing -> runMaybeT (try xs)
     Just r -> return (Just r)
- 
+
 assemble :: Function -> Expr
 assemble (Function args _ body _) = foldr Abs body (map fst args)
 
@@ -341,14 +365,17 @@ removeRedundant x fns = filter ((`elem` used) . fst) fns
 calls :: Expr -> Ident -> Bool
 calls e i = i `elem` calledBy e
 
-test env = synthesise env (tyList tyInt --> tyInt)
-  [ Eg [toTerm ([1, 2] :: [Int])] (toTerm (1 :: Int))
-  , Eg [toTerm ([0, 2, 3] :: [Int])] (toTerm (0 :: Int)) ]
+toVal :: Value a => a -> Arg
+toVal = Val . toTerm
 
-test' env = synthesise env (tyInt --> tyList tyInt --> tyList tyInt)
-  [ Eg [toTerm (0 :: Int), toTerm ([1] :: [Int])] (toTerm ([0, 0, 1] :: [Int]))
-  , Eg [toTerm (2 :: Int), toTerm ([] :: [Int])] (toTerm ([2, 2] :: [Int])) ]
+test' env = synthesise env (tyList tyInt --> tyInt)
+  [ Eg [toVal ([1, 2] :: [Int])] (toTerm (1 :: Int))
+  , Eg [toVal ([0, 2, 3] :: [Int])] (toTerm (0 :: Int)) ]
+
+test env = synthesise env (tyInt --> tyList tyInt --> tyList tyInt)
+  [ Eg [toVal (0 :: Int), toVal ([1] :: [Int])] (toTerm ([0, 0, 1] :: [Int]))
+  , Eg [toVal (2 :: Int), toVal ([] :: [Int])] (toTerm ([2, 2] :: [Int])) ]
 
 test'' env = synthesise env (tyInt --> tyBool)
-  [ Eg [CInt 0] (toTerm False)
-  , Eg [CInt 1] (toTerm True) ]
+  [ Eg [toVal (0 :: Int)] (toTerm False)
+  , Eg [toVal (1 :: Int)] (toTerm True) ]

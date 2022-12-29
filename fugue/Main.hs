@@ -147,11 +147,14 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  liftIO $ case test env of
+  case test env of
     Just (i, fns) -> do
       let fns' = removeRedundant i (unwindFrom i fns)
-      putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns')
-    Nothing -> putStrLn "synthesis failed! :o"
+          (Just fn) = lookup i fns'
+      term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
+      liftIO $ putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns')
+      liftIO $ putStrLn $ "compiled = " ++ show term
+    Nothing -> liftIO $ putStrLn "synthesis failed! :o"
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
