@@ -60,16 +60,16 @@ infer (Var x) = do
 infer (Abs x e) = do
   tv <- fresh
   te <- with (x, Forall [] tv) (infer e)
-  
+
   return $ tv --> te
 
 infer (App f x) = do
   tf <- infer f
   tx <- infer x
   tv <- fresh
-  
+
   tf ~~ tx --> tv
-  
+
   return tv
 
 infer (Let x e b) = do
@@ -79,7 +79,7 @@ infer (Let x e b) = do
 infer (LetRec x e b) = do
   tv <- fresh
   te <- with (x, Forall [] tv) (infer e)
-  
+
   te ~~ tv
 
   with (x, Forall [] tv) (infer b)
@@ -88,7 +88,7 @@ infer (If cond t f) = do
   tc <- infer cond
   tt <- infer t
   tf <- infer f
-  
+
   tc ~~ tyBool
   tt ~~ tf
 
@@ -103,19 +103,19 @@ infer (Case t cases) = do
 
   let (con1, _, _) = head cases
   dt <- dataTypeWithCon con1
-  
+
   case dt of
     Just (DataType dtParams dtCons) -> case missingCases dtCons cases of
       [] -> do
         forM_ cases $ \(constr, args, body) -> do
           tArgs <- mapM (const fresh) args
           let schArgs = zipWith (\arg ty -> (arg, Forall [] ty)) args tArgs
-    
+
           (tb', tt') <- withMany schArgs $ do
             tb' <- infer body
             tt' <- infer $ foldl App (Var constr) (map Var args)
             return (tb', tt')
-        
+
           tb ~~ tb'
           tt ~~ tt'
 
@@ -145,7 +145,7 @@ infer (TypeSpec e t) = do
     sch <- generalise te
     t' <- generalise t
     return (sch, t')
-    
+
   if sch <= t'
     then return t
     else throwError $ TypeSpecMismatch sch t'
@@ -202,8 +202,7 @@ with :: MonadReader InferContext m => (Ident, Scheme) -> m a -> m a
 with (i, sch) = local $ \ c -> c { env = (i, (sch, Local)) : env c }
 
 withMany :: MonadReader InferContext m => [(Ident, Scheme)] -> m a -> m a
-withMany [] b = b
-withMany (i:is) b = with i (withMany is b)
+withMany is b = foldr with b is
 
 type Unify = StateT Subst (Except TypeError)
 
@@ -251,12 +250,10 @@ compose s1 s2 = map (fmap (sub s1)) s2 ++ s1
 inferScheme :: Expr -> Infer Scheme
 inferScheme expr = do
   (t, s) <- withConstraints (infer expr) solve
-  case isComplete expr of
-    True  -> return $ finalise t
-    False -> do
-      (t', holes) <- typeHoles expr t
-      let (sch, holes') = finaliseHoles t' holes
-      throwError $ FoundHoles sch holes'
+  if isComplete expr then return $ finalise t else (do
+    (t', holes) <- typeHoles expr t
+    let (sch, holes') = finaliseHoles t' holes
+    throwError $ FoundHoles sch holes')
 
 finaliseHoles :: Type -> [BoundHole] -> (Scheme, [BoundHole])
 finaliseHoles t hs =
@@ -282,7 +279,7 @@ typeAs (Var x) t = lift $ do
     Just (sch, _) -> do
       t' <- instantiate sch
       t ~~ t'
-  
+
 typeAs (LitInt n) t = lift $ tyInt ~~ t
 typeAs (LitChar c) t = lift $ tyChar ~~ t
 
@@ -297,7 +294,7 @@ typeAs (LitTuple xs) t = do
     tv <- lift fresh
     typeAs x tv
     return tv
-    
+
   lift $ tyTuple ts ~~ t
 
 typeAs (App f x) t = do
@@ -352,5 +349,5 @@ typeAs (TypeSpec e t) t' = do
 typeAs (Hole n) t = do
   env <- lift (asks env)
   lift $ TyHole n ~~ t
-  tell $ [BoundHole n t env]
+  tell [BoundHole n t env]
 

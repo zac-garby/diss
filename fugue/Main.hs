@@ -147,7 +147,7 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  case test env of
+  case testStutter env of
     Just (i, fns) -> do
       let fns' = removeRedundant i (unwindFrom i fns)
           (Just fn) = lookup i fns'

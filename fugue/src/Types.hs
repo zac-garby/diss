@@ -94,7 +94,7 @@ instance Functor GenericType where
 
 instance Foldable GenericType where
   foldr f s (TyVar v) = f v s
-  foldr f s (TyConstr c ts) = foldr (\t b -> foldr f b t) s ts
+  foldr f s (TyConstr c ts) = foldr (flip (foldr f)) s ts
   foldr _ s (TyHole _) = s
 
 instance Show (GenericType String) where
@@ -103,9 +103,9 @@ instance Show (GenericType String) where
   show (TyConstr "List" [t]) = "[" ++ show t ++ "]"
   show (TyConstr "Tuple" xs) = "(" ++ intercalate ", " (map show xs) ++ ")"
   show (TyConstr c []) = c
-  show (TyConstr c ts) = c ++ " " ++ intercalate " " (map bracketType ts)
+  show (TyConstr c ts) = c ++ " " ++ unwords (map bracketType ts)
   show (TyHole i) = "¿" ++ show i ++ "?"
-  
+
 bracketType :: Type -> String
 bracketType t@(TyConstr "->" _) = "(" ++ show t ++ ")"
 bracketType t = show t
@@ -117,7 +117,7 @@ type Env = [(Ident, (Scheme, BindingLocality))]
 
 instance Show Scheme where
   show (Forall [] t) = show t
-  show (Forall vs t) = "∀ " ++ intercalate " " vs ++ " . " ++ show t
+  show (Forall vs t) = "∀ " ++ unwords vs ++ " . " ++ show t
 
 class Vars a where
   freeVars :: a -> [Ident]
@@ -135,7 +135,7 @@ type Subst = [(Ident, Type)]
 
 class Sub a where
   sub :: Subst -> a -> a
-  
+
 instance Sub Type where
   sub s t@(TyVar v) = fromMaybe t (lookup v s)
   sub s (TyConstr c ts) = TyConstr c (map (sub s) ts)
@@ -143,7 +143,7 @@ instance Sub Type where
 
 instance Sub Scheme where
   sub s (Forall vs t) = Forall vs (sub s' t)
-    where s' = [ (i, t) | (i, t) <- s, not (i `elem` vs) ]
+    where s' = [ (i, t) | (i, t) <- s, i `notElem` vs ]
 
 instance Sub Env where
   sub s e = [ (id, (sub s sch, l)) | (id, (sch, l)) <- e ]
@@ -166,7 +166,7 @@ makeRenamer t = snd $ execState (traverse mk t) (allVars, [])
   where mk :: Ident -> State ([Ident], Subst) ()
         mk v = do
           state <- get
-          let ((new:rest), existing) = state
+          let (new:rest, existing) = state
           case lookup v existing of
             Just n -> return ()
             Nothing -> put (rest, (v, TyVar new) : existing)
@@ -177,5 +177,5 @@ renameToDistinct t1 t2
   | otherwise = renameToDistinct (sub s t1) t2
   where fv1 = freeVars t1
         fv2 = freeVars t2
-        inCommon = intersect fv1 fv2
+        inCommon = fv1 `intersect` fv2
         s = [(v, TyVar (v ++ "'")) | v <- inCommon]

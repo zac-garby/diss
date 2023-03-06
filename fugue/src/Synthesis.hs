@@ -40,35 +40,46 @@ instance Show Arg where
 data Example = Eg [Arg] Term
   deriving Show
 
-type Synth = MaybeT (StateT ([Ident], Functions) (Reader Context))
+data SynthState = SynthState
+  { newNames :: [Ident]
+  , functions :: Functions
+  , depth :: Int }
+  deriving Show
+
+type Synth = MaybeT (StateT SynthState (Reader Context))
 
 synthesise :: Environment -> Type -> [Example] -> Maybe (Ident, Functions)
 synthesise env goal egs =
   let r = runReader (runStateT (runMaybeT (uncurry synth (unfoldFnTy goal)))
-                                (allVars, [])) ctx
+                                (SynthState allVars [] 16)) ctx
   in case r of
     (Nothing, _) -> Nothing
-    (Just i, (_, fns)) -> Just (i, fns)
+    (Just i, SynthState { functions = fns }) -> Just (i, fns)
   where ctx = Context { env = env
                       , examples = egs }
 
 synth :: [Type] -> Type -> Synth Ident
 synth argTypes ret = do
+  d <- gets depth
+  guard $ d > 0
+  modify $ \s -> s { depth = depth s - 1 }
+
   egs <- asks examples
-  
+
   args <- forM argTypes $ \t -> do
     name <- fresh
     return (name, t)
 
   try [ synthNoEgs args ret
       , synthTrivial args ret
+      , synthRecurse args ret
       , synthCommonConstr args ret
       , synthSplit args ret ]
 
 synthNoEgs :: [(Ident, Type)] -> Type -> Synth Ident
 synthNoEgs args retType = do
   egs <- asks examples
-  
+
   if null egs then
     defineFunction $ Function args retType (Hole 0) []
   else
@@ -90,13 +101,13 @@ synthTrivial args retType = do
 synthCommonConstr :: [(Ident, Type)] -> Type -> Synth Ident
 synthCommonConstr args retType = do
   egs <- asks examples
-  
+
   case sharedConstr egs of
     Nothing -> exit
     Just con -> do
       egs <- asks examples
       ts <- asks (terms . env)
-  
+
       Forall _ conTy <- lookupType' con
       let (conArgTys, _) = unfoldFnTy (specialiseConstructor conTy retType)
           (conArgs, d) = unzip [ (args, deconstruct' o) | Eg args o <- egs ]
@@ -108,9 +119,9 @@ synthCommonConstr args retType = do
       fns <- forM (zip conArgTys conEgs) $ \(conArgTy, egs) -> do
         withExamples egs (synth argTypes conArgTy)
 
-      let body = applyMany $ (Var con)
+      let body = applyMany $ Var con
                  : [ applyMany $ Var fn : map Var argNames | fn <- fns ]
-  
+
       defineFunction $ Function { args = args
                                 , ret = retType
                                 , body = body
@@ -125,7 +136,7 @@ synthSplitOn splitOn args retType = do
   egs <- asks examples
   e <- asks env
 
-  guard (argIsThunk splitOn egs)
+  guard (not (argIsThunk splitOn egs))
   let (splitArg, splitTy) = args !! splitOn
 
   case splitTy of
@@ -139,13 +150,13 @@ synthSplitOn splitOn args retType = do
           conArgs <- forM conArgTys $ \ty -> do
             name <- fresh
             return (name, ty)
-          
+
           let allArgs = args ++ conArgs
-              egs' = [ Eg (ins ++ (map Val conArgs')) out
+              egs' = [ Eg (ins ++ map Val conArgs') out
                      | Eg ins out <- egs
                      , let (con', conArgs') = deconstruct' (fromVal (ins !! splitOn))
                      , con == con']
-              
+
           g <- withExamples egs' (synth (map snd allArgs) retType)
           return (con, map fst conArgs, applyMany (map Var (g : map fst allArgs)))
 
@@ -158,12 +169,70 @@ synthSplitOn splitOn args retType = do
       Nothing -> fail "non-datatype or undefined"
     _ -> fail "can't split on non-ADT"
 
+synthRecurse :: [(Ident, Type)] -> Type -> Synth Ident
+synthRecurse args retType = try [ synthRecurseOn i args retType
+                                | i <- [0..length args - 1] ]
+
+synthRecurseOn :: Int -> [(Ident, Type)] -> Type -> Synth Ident
+synthRecurseOn splitOn args retType = do
+  egs <- asks examples
+  e <- asks env
+
+  guard (not (argIsThunk splitOn egs))
+  let (splitArg, splitTy) = args !! splitOn
+
+  fnName <- fresh
+
+  case splitTy of
+    TyConstr dtName dtArgs -> case lookupDataType dtName e of
+      Just (DataType tyArgs dtConstrs) -> do
+        let s = zip tyArgs dtArgs :: Subst
+            dtConstrs' = [ DataConstructor i (map (sub s) ts)
+                         | DataConstructor i ts <- dtConstrs ]
+
+        cases <- forM dtConstrs' $ \(DataConstructor con conArgTys) -> do
+          conArgs <- forM conArgTys $ \ty -> do
+            name <- fresh
+            return (name, ty)
+
+          let allArgs = args ++ conArgs
+              egs' = [ Eg (ins ++ map Val conArgs') out
+                     | Eg ins out <- egs
+                     , let (con', conArgs') = deconstruct' (fromVal (ins !! splitOn))
+                     , con == con']
+              recursiveCalls = [ applyMany (map Var (fnName : map fst recArgs))
+                               | (i, (argName, argTy)) <- zip [0..] conArgs,
+                                 argTy == splitTy,
+                                 let recArgs = replace i (argName, splitTy) args ]
+
+          g <- withExamples egs' (synth (map snd allArgs) retType)
+
+          let app = applyMany (map Var (g : map fst allArgs) ++ recursiveCalls)
+
+          return (con, map fst conArgs, app)
+
+        let body = Case (Var splitArg) cases
+        defineFunctionNamed fnName $
+          Function { args = args
+                   , ret = retType
+                   , body = body
+                   , egs = egs }
+
+      Nothing -> fail "non-datatype or undefined"
+    _ -> fail "can't split on non-ADT"
+
+replace :: Int -> a -> [a] -> [a]
+replace 0 x (y:ys) = x:ys
+replace n x (y:ys) = y : replace (n-1) x ys
+replace _ _ [] = undefined
+
 hasVal :: Arg -> Term -> Bool
 hasVal (Val v) t = v == t
 hasVal (Thunk _ _) t = False
 
 fromVal :: Arg -> Term
 fromVal (Val v) = v
+fromVal _ = undefined
 
 isThunk :: Arg -> Bool
 isThunk (Val _) = False
@@ -176,8 +245,12 @@ argIsThunk n ((Eg args _):_) = isThunk (args !! n)
 defineFunction :: Function -> Synth Ident
 defineFunction f = do
   name <- fresh
-  modify $ \(ns, fs) -> (ns, (name, f) : fs)
-  return name
+  defineFunctionNamed name f
+
+defineFunctionNamed :: Ident -> Function -> Synth Ident
+defineFunctionNamed n f = do
+  modify $ \s@SynthState { functions = fns } -> s { functions = (n, f) : fns }
+  return n
 
 exit :: Monad m => MaybeT m a
 exit = fail "ignored"
@@ -191,7 +264,7 @@ try (x:xs) = let x' = runMaybeT x in MaybeT $ do
     Just r -> return (Just r)
 
 assemble :: Function -> Expr
-assemble (Function args _ body _) = foldr Abs body (map fst args)
+assemble (Function args _ body _) = foldr (Abs . fst) body args
 
 collapse :: Functions -> Expr -> Expr
 collapse fns app@(App f x) = case unfoldApp app of
@@ -199,11 +272,12 @@ collapse fns app@(App f x) = case unfoldApp app of
     Nothing -> App (collapse fns f) (collapse fns x)
     Just fn -> app
   _ -> app
+collapse _ _ = error "not yet implemented collapse for this expression"
 
 fresh :: Synth Ident
 fresh = do
-  name <- gets (head . fst)
-  modify $ \(n:ns, fs) -> (ns, fs)
+  name <- gets (head . newNames)
+  modify $ \s@SynthState { newNames = (n:ns) } -> s { newNames = ns }
   return name
 
 specialiseConstructor :: Type -> Type -> Type
@@ -212,7 +286,7 @@ specialiseConstructor conTy ret = case runExcept (runUnify u) of
   Right s -> sub s genTy'
   where (argTys, conRetTy) = unfoldFnTy conTy
         varNames = take (length argTys) [ "*temp" ++ show i | i <- [0..] ]
-        genTy = foldr (-->) ret (map TyVar varNames)
+        genTy = foldr ((-->) . TyVar) ret varNames
         (conTy', genTy') = renameToDistinct conTy genTy
         u = unify genTy' conTy'
 
@@ -248,7 +322,7 @@ sharedConstr :: [Example] -> Maybe Ident
 sharedConstr [] = Nothing
 sharedConstr xs = do
   let outputs = [ o | Eg _ o <- xs ]
-  (y:ys) <- forM outputs (\o -> fmap fst (deconstruct o))
+  (y:ys) <- forM outputs (fmap fst . deconstruct)
   if all (== y) ys then
     return y
   else
@@ -272,7 +346,7 @@ unfoldApp e = (e, [])
 type Unwind = State Functions
 
 unwindFrom :: Ident -> Functions -> Functions
-unwindFrom x fns = execState (unwindFn x) fns
+unwindFrom x = execState (unwindFn x)
 
 unwindFn :: Ident -> Unwind ()
 unwindFn f = do
@@ -284,7 +358,7 @@ unwind :: Expr -> Unwind Expr
 unwind (Var x) = do
   fn <- lookupU x
   case fn of
-    Just (Function { body = body, args = [] }) -> unwind body
+    Just Function{ body = body, args = [] } -> unwind body
     _ -> return $ Var x
 unwind app@(App e1 e2) = case unfoldApp app of
     (Var x, args) -> do
@@ -302,7 +376,7 @@ unwind (Case e cases) = do
   cases' <- forM cases $ \(x, xs, b) -> do
     b' <- unwind b
     return (x, xs, b')
-    
+
   Case <$> unwind e <*> return cases'
 unwind (LitInt n) = return $ LitInt n
 unwind (LitList xs) = LitList <$> mapM unwind xs
@@ -325,7 +399,7 @@ lookupU' :: Ident -> Unwind Function
 lookupU' f = fmap fromJust (lookupU f)
 
 canInline :: Ident -> Function -> Bool
-canInline fnName (Function { body = body }) = not (body `calls` fnName)
+canInline fnName Function{ body = body } = not (body `calls` fnName)
 
 insertFn :: Ident -> Function -> Functions -> Functions
 insertFn x fn [] = []
@@ -354,9 +428,9 @@ allCalledBy x fns = go x fns []
           | x `elem` visited = visited
           | otherwise = x : case lookup x fns of
               Nothing -> []
-              Just (Function { body = body }) ->
+              Just Function{ body = body } ->
                 let newCalls = calledBy body \\ (x : visited)
-                in foldl (\vs call -> go call fns vs) visited newCalls
+                in foldl' (\vs call -> go call fns vs) visited newCalls
 
 removeRedundant :: Ident -> Functions -> Functions
 removeRedundant x fns = filter ((`elem` used) . fst) fns
@@ -379,3 +453,7 @@ test env = synthesise env (tyInt --> tyList tyInt --> tyList tyInt)
 test'' env = synthesise env (tyInt --> tyBool)
   [ Eg [toVal (0 :: Int)] (toTerm False)
   , Eg [toVal (1 :: Int)] (toTerm True) ]
+
+testStutter env = synthesise env (tyList tyInt --> tyList tyInt)
+  [ Eg [toVal ([] :: [Int])] (toTerm ([] :: [Int]))
+  , Eg [toVal ([1, 2] :: [Int])] (toTerm ([1, 1, 2, 2] :: [Int])) ]

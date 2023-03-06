@@ -1,0 +1,38 @@
+data Color = Red | Black;
+
+data RBTree a = Leaf | Node Color (RBTree a) a (RBTree a);
+
+insert' : RBTree a -> a -> (RBTree a, Bool);
+insert' tree value =
+  case tree of
+    Leaf -> (Node Red Leaf value Leaf, True)
+    Node color left v right ->
+      if value < v
+      then let (left', added) = insert' left value
+           in (Node color left' v right, added)
+      else if value > v
+           then let (right', added) = insert' right value
+                in (Node color left v right', added)
+           else (tree, False);
+
+fixColors : RBTree a -> RBTree a;
+fixColors tree =
+  case tree of
+    Leaf -> Leaf
+    Node color left v right ->
+      let color' = if hasRedChild tree then Black else color
+          left' = fixColors left
+          right' = fixColors right
+      in Node color' left' v right';
+
+insert : RBTree a -> a -> RBTree a;
+insert tree value =
+  let i = insert' tree value
+  in fixColors (fst i);
+
+hasRedChild : RBTree a -> Bool;
+hasRedChild tree =
+  case tree of
+    Leaf -> False
+    Node color left v right ->
+      color == Red || hasRedChild left || hasRedChild right;

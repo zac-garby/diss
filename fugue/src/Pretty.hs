@@ -30,7 +30,7 @@ prettyExpr (Let x val body) = "let " ++ x ++ " = " ++ prettyExpr val ++ " in " +
 prettyExpr (LetRec x val body) = "let rec " ++ x ++ " = " ++ prettyExpr val ++ " in " ++ prettyExpr body
 prettyExpr (If cond t f) = "if " ++ prettyExpr cond ++ " then " ++ prettyExpr t ++ " else " ++ prettyExpr f
 prettyExpr (Case cond cases) = "case " ++ prettyExpr cond ++ " of "
-  ++ intercalate ", " [ intercalate " " (x:xs) ++ " -> " ++ prettyExpr body | (x, xs, body) <- cases ]
+  ++ intercalate ", " [  unwords (x:xs) ++ " -> " ++ prettyExpr body | (x, xs, body) <- cases ]
 prettyExpr (LitInt i) = show i
 prettyExpr (LitList xs) = "[" ++ intercalate ", " (map prettyExpr xs) ++ "]"
 prettyExpr (LitTuple xs) = "(" ++ intercalate ", " (map prettyExpr xs) ++ ")"
@@ -81,7 +81,7 @@ prettyType (TyConstr "->" [l,r]) = bracketType l ++ " → " ++ prettyType r
 -- prettyType (TyConstr "List" [t]) = "[" ++ prettyType t ++ "]"
 -- prettyType (TyConstr "Tuple" xs) = "(" ++ intercalate ", " (map prettyType xs) ++ ")"
 prettyType (TyConstr c []) = colour 32 c
-prettyType (TyConstr c ts) = colour 32 c ++ " " ++ intercalate " " (map bracketTypeApp ts)
+prettyType (TyConstr c ts) = colour 32 c ++ " " ++ unwords (map bracketTypeApp ts)
 prettyType (TyHole i) = colour 91 (show i ++ "?")
 
 bracketType :: Type -> String
@@ -94,7 +94,7 @@ bracketTypeApp t = bracketType t
 
 prettyScheme :: Scheme -> String
 prettyScheme (Forall [] t) = prettyType t
-prettyScheme (Forall vs t) = colour 90 ("∀ " ++ intercalate " " vs ++ " . ") ++ prettyType t
+prettyScheme (Forall vs t) = colour 90 ("∀ " ++ unwords vs ++ " . ") ++ prettyType t
 
 prettyTypes :: [(Ident, (Scheme, Term))] -> String
 prettyTypes env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (pprintIdent ops name)) ++
@@ -106,7 +106,7 @@ prettyFunction :: Ident -> Function -> String
 prettyFunction name (Function args ret body egs) =
   name ++ " : " ++ intercalate " -> " (map prettyType (map snd args ++ [ret])) ++ "\n" ++
   "  { " ++ intercalate "\n  ; " (map prettyExample egs) ++ " }\n" ++
-  name ++ " " ++ intercalate " " (map fst args) ++ " = " ++ prettyExpr body
+  name ++ " " ++ unwords (map fst args) ++ " = " ++ prettyExpr body
 
 prettyExample :: Example -> String
 prettyExample (Eg args ret) = intercalate ", " (map prettyEgArg args) ++ " => " ++ prettyTerm' ret
@@ -119,11 +119,11 @@ prettyDataTypes :: [(Ident, DataType)] -> String
 prettyDataTypes dts = intercalate "\n" $ do
   (name, DataType as cs) <- dts
   return $ colour 90 "data "
-        ++ intercalate " " (colour 32 name : map (prettyType . TyVar) as)
+        ++ unwords (colour 32 name : map (prettyType . TyVar) as)
         ++ " = "
-        ++ (intercalate " | " $ do
+        ++ intercalate " | " (do
              DataConstructor c args <- cs
-             return $ intercalate " " (colour 32 c : map bracketTypeApp args))
+             return $ unwords (colour 32 c : map bracketTypeApp args))
 
 prettyHole :: BoundHole -> String
 prettyHole bh@(BoundHole i ty env)

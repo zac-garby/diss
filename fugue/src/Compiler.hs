@@ -79,12 +79,12 @@ fromExpr (Var v) = do
   case elemIndex v ns of
     Just i -> return $ CVar i
     Nothing -> throwError $ UndefinedVariable v
-    
+
 fromExpr (App f x) = do
   f' <- fromExpr f
   x' <- fromExpr x
   return $ CApp f' x'
-  
+
 fromExpr (Abs v t) = do
   t' <- with v $ fromExpr t
   return $ CAbs t'
@@ -128,7 +128,7 @@ with :: Ident -> Compiler a -> Compiler a
 with i = local (i:)
 
 list2clist :: [Term] -> Term
-list2clist = foldr (\h t -> CApp (CApp (CConstr "Cons") h) t) (CConstr "Nil")
+list2clist = foldr (CApp . CApp (CConstr "Cons")) (CConstr "Nil")
 
 clist2list :: Term -> Maybe [Term]
 clist2list (CApp (CApp (CConstr "Cons") h) t) = do
@@ -147,7 +147,7 @@ instance Value Int where
 
 instance Value Bool where
   toTerm b = CConstr (show b)
-  
+
   fromTerm (CConstr "True") = True
   fromTerm (CConstr "False") = False
 

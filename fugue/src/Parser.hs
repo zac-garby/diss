@@ -304,7 +304,7 @@ ident = litIdent <|> opIdent
 litIdent :: Parser Ident
 litIdent = try $ lexeme $ do
   id <- (:) <$> satisfy validFirstId <*> many (satisfy validIdent)
-  guard $ not (id `elem` keywords)
+  guard $ notElem id keywords
   return id
 
 opIdent :: Parser Ident
@@ -377,7 +377,7 @@ mkOpParser :: Parser Expr -> Operators -> Parser Expr
 mkOpParser p [] = p
 mkOpParser p ((assoc, ops):rest) = assocFn assoc next mkOp
   where next = mkOpParser p rest
-        mkOp = choice [ try (keyword op) >> return (\l r -> App (App (Var to) l) r)
+        mkOp = choice [ try (keyword op) >> return (App . App (Var to))
                       | (op, to) <- ops ]
 
         assocFn LeftAssoc = chainl1
@@ -389,15 +389,15 @@ unfoldAbs (Abs v t) = (v:vs, t')
 unfoldAbs t = ([], t)
 
 foldExpr :: (a -> a -> a) -> (Expr -> a) -> a -> Expr -> a
-foldExpr c l a (App f x) = foldExpr c l a f `c` foldExpr c l a x 
+foldExpr c l a (App f x) = foldExpr c l a f `c` foldExpr c l a x
 foldExpr c l a (Abs v t) = foldExpr c l a t
 foldExpr c l a (Let v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (LetRec v val body) = foldExpr c l a body `c` foldExpr c l a val
 foldExpr c l a (If cond t f) = foldExpr c l a f `c` foldExpr c l a t `c` foldExpr c l a cond
 foldExpr c l a (Case co cases) = foldExpr c l a co `c`
                                 foldr c a [ foldExpr c l a b | (_, _, b) <- cases ]
-foldExpr c l a (LitList xs) = foldr c a (map (foldExpr c l a) xs)
-foldExpr c l a (LitTuple xs) = foldr c a (map (foldExpr c l a) xs)
+foldExpr c l a (LitList xs) = foldr (c . foldExpr c l a) a xs
+foldExpr c l a (LitTuple xs) = foldr (c . foldExpr c l a) a xs
 foldExpr c l a (TypeSpec e _) = foldExpr c l a e
 foldExpr c l a t = l t
 

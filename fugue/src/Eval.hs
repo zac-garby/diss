@@ -139,8 +139,8 @@ shift' d c (CBuiltin t f) = CBuiltin t f
 (-->) :: Int -> Term -> Term -> Term
 (j --> s) (CVar n) | j == n = s
                    | otherwise = CVar n
-(j --> s) (CAbs t) = CAbs $! ((j+1) --> (shift 1 s)) t
-(j --> s) (CApp f x) = (CApp $! (j --> s) f) $! ((j --> s) x)
+(j --> s) (CAbs t) = CAbs $! ((j+1) --> shift 1 s) t
+(j --> s) (CApp f x) = (CApp $! (j --> s) f) $! (j --> s) x
 (j --> s) (CFix t) = CFix $! (j --> s) t
 (j --> s) (CIf cond t f) = CIf ((j --> s) cond) ((j --> s) t) ((j --> s) f)
 (j --> s) (CCase t cs) = CCase ((j --> s) t) [ (con, (j --> s) b) | (con, b) <- cs ]
