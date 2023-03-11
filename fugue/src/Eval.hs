@@ -113,6 +113,7 @@ isValue (CConstr "Suc") = False
 isValue (CConstr _) = True
 isValue (CTuple xs) = all isValue xs
 isValue (CBuiltin _ _) = True
+isValue (CThonk f args) = True
 
 isWHNF :: Term -> Bool
 isWHNF (CApp (CConstr _) a) = True
@@ -135,6 +136,7 @@ shift' d c (CChar ch) = CChar ch
 shift' d c (CConstr con) = CConstr con
 shift' d c (CTuple xs) = CTuple (map (shift' d c) xs)
 shift' d c (CBuiltin t f) = CBuiltin t f
+shift' d c (CThonk f args) = CThonk f (map (shift' d c) args)
 
 (-->) :: Int -> Term -> Term -> Term
 (j --> s) (CVar n) | j == n = s
@@ -149,3 +151,4 @@ shift' d c (CBuiltin t f) = CBuiltin t f
 (j --> s) (CConstr c) = CConstr c
 (j --> s) (CTuple xs) = CTuple (map (j --> s) xs)
 (j --> s) (CBuiltin t f) = CBuiltin t f
+(j --> s) (CThonk f args) = CThonk f (map (j --> s) args)

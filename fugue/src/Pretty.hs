@@ -182,7 +182,3 @@ instance Show TypeError where
   show (MissingCases cases) = show (length cases) ++ " missing cases: "
     ++ intercalate ", " (map prettyConstructor cases)
   show (UnknownConstructor con) = "undefined constructor: " ++ con
-
-instance Show CompilerError where
-  show (UndefinedVariable v) = "undeclared variable: " ++ v
-  show FoundHole = "attempted to compile an incomplete expression containing a hole"

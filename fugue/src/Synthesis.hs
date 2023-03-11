@@ -1,4 +1,16 @@
-module Synthesis where
+module Synthesis
+  ( Context (..)
+  , Function (..)
+  , Functions (..)
+  , Arg (..)
+  , Example (..)
+  , SynthState (..)
+  , Synth (..)
+  , synthesise
+  , removeRedundant
+  , unwindFrom
+  , test
+  ) where
 
 import Data.Maybe
 import Data.List
@@ -14,10 +26,12 @@ import Compiler
 import Types
 import Env
 import Infer
+import System.IO (hFlush, stdout)
+import System.IO.Unsafe (unsafePerformIO)
 
 data Context = Context
-  { env :: Environment
-  , examples :: [Example] }
+  { examples :: [Example]
+  , depth :: Int }
 
 data Function = Function
   { args :: [(Ident, Type)]
@@ -25,6 +39,10 @@ data Function = Function
   , body :: Expr
   , egs :: [Example] }
   deriving Show
+
+data RecursivePart = Recurse Expr
+                   | NoRecurse
+                   deriving Show
 
 type Functions = [(Ident, Function)]
 
@@ -43,70 +61,111 @@ data Example = Eg [Arg] Term
 data SynthState = SynthState
   { newNames :: [Ident]
   , functions :: Functions
-  , depth :: Int }
+  , maxDepth :: Int
+  , env :: Environment }
   deriving Show
 
 type Synth = MaybeT (StateT SynthState (Reader Context))
 
-synthesise :: Environment -> Type -> [Example] -> Maybe (Ident, Functions)
-synthesise env goal egs =
-  let r = runReader (runStateT (runMaybeT (uncurry synth (unfoldFnTy goal)))
-                                (SynthState allVars [] 16)) ctx
+type SynthCase = [(Ident, Type)] -> Type -> Ident -> Synth Function
+
+synthesise :: Environment -> Ident -> Type -> [Example] -> Maybe (Ident, Functions)
+synthesise env fnName goal egs =
+  let r = runSynth defaultState ctx problem
   in case r of
     (Nothing, _) -> Nothing
     (Just i, SynthState { functions = fns }) -> Just (i, fns)
-  where ctx = Context { env = env
-                      , examples = egs }
+  where ctx = Context {
+          examples = egs
+        , depth = 0 }
+        defaultState = SynthState {
+          newNames = allVars
+        , functions = []
+        , maxDepth = 0
+        , env = env }
+        problem = uncurry (upToDepth 16 ... synthDef "result") (unfoldFnTy goal)
 
-synth :: [Type] -> Type -> Synth Ident
-synth argTypes ret = do
-  d <- gets depth
-  guard $ d > 0
-  modify $ \s -> s { depth = depth s - 1 }
+runSynth :: SynthState -> Context -> Synth a -> (Maybe a, SynthState)
+runSynth s c p = runReader (runStateT (runMaybeT p) s) c
+
+upToDepth :: Int -> Synth a -> Synth a
+upToDepth toDepth f = do
+  try [ synthWithMaxDepth d | d <- [1..toDepth] ]
+  where synthWithMaxDepth d = do
+          modify $ \s -> s { maxDepth = d }
+          f
+
+synth :: [Type] -> Type -> Ident -> Synth Function
+synth argTypes ret name = do
+  d <- asks depth
+  dMax <- gets maxDepth
+
+  debug $ "* synthesising " ++ name ++ " : " ++ intercalate " -> " (map show argTypes) ++ " -> " ++ show ret
+  
+  if d < dMax then do
+    egs <- asks examples
+
+    forM_ egs $ \(Eg args t) -> do
+      debug $ "* { (" ++ intercalate ", " (map show args) ++ ") => " ++ show t ++ " }"
+
+    args <- forM argTypes $ \t -> do
+      name <- fresh
+      return (name, t)
+
+    local (\c -> c { depth = d + 1 }) $
+      try [ synthNoEgs args ret name
+          , synthTrivial args ret name
+          , synthRecurse args ret name
+          , synthCommonConstr args ret name
+          , synthSplit args ret name ]
+  else do
+    debug "* failed: out of depth"
+    fail "out of depth"
+
+synthNoEgs :: SynthCase
+synthNoEgs args retType _ = do
+  debug ": trying synth no egs"
 
   egs <- asks examples
 
-  args <- forM argTypes $ \t -> do
-    name <- fresh
-    return (name, t)
-
-  try [ synthNoEgs args ret
-      , synthTrivial args ret
-      , synthRecurse args ret
-      , synthCommonConstr args ret
-      , synthSplit args ret ]
-
-synthNoEgs :: [(Ident, Type)] -> Type -> Synth Ident
-synthNoEgs args retType = do
-  egs <- asks examples
-
-  if null egs then
-    defineFunction $ Function args retType (Hole 0) []
+  if null egs then do
+    debug "done: synth no egs"
+    return $ Function args retType (Hole 0) []
   else
     exit
 
-synthTrivial :: [(Ident, Type)] -> Type -> Synth Ident
-synthTrivial args retType = do
+synthTrivial :: SynthCase
+synthTrivial args retType _ = do
+  debug ": trying synth trivial"
+
   egs <- asks examples
   go egs 0
   where go egs n
           | n >= length args = exit
-          | all (\(Eg egArgs egRes) -> egArgs !! n `hasVal` egRes) egs =
-            defineFunction $ Function { args = args
-                                      , ret = retType
-                                      , body = Var (fst $ args !! n)
-                                      , egs = egs }
+          | all (\(Eg egArgs egRes) -> egArgs !! n `hasVal` egRes) egs = do
+            debug "done: synth trivial"
+            return $ Function { args = args
+                              , ret = retType
+                              , body = Var (fst $ args !! n)
+                              , egs = egs }
           | otherwise = go egs (n + 1)
 
-synthCommonConstr :: [(Ident, Type)] -> Type -> Synth Ident
-synthCommonConstr args retType = do
+{-
+In theory, could give visibility to the parent function in the sub-syntheses in
+  other problems too (including common constr, case-splits, etc). It may be best
+  to limit it to just the explicit recursion introductions though.
+-}
+synthCommonConstr :: SynthCase
+synthCommonConstr args retType _ = do
+  debug ": trying common constr"
+
   egs <- asks examples
 
   case sharedConstr egs of
     Nothing -> exit
     Just con -> do
       egs <- asks examples
-      ts <- asks (terms . env)
+      ts <- gets (terms . env)
 
       Forall _ conTy <- lookupType' con
       let (conArgTys, _) = unfoldFnTy (specialiseConstructor conTy retType)
@@ -116,110 +175,186 @@ synthCommonConstr args retType = do
           conEgs = [ zipWith Eg conArgs d | d <- d'T ]
           (argNames, argTypes) = unzip args
 
-      fns <- forM (zip conArgTys conEgs) $ \(conArgTy, egs) -> do
-        withExamples egs (synth argTypes conArgTy)
+      names <- forM (zip conArgTys conEgs) $ \(conArgTy, egs) -> do
+        fnName <- fresh
+        withExamples egs (synthDef fnName argTypes conArgTy)
 
       let body = applyMany $ Var con
-                 : [ applyMany $ Var fn : map Var argNames | fn <- fns ]
+                 : [ applyMany $ Var n : map Var argNames | n <- names ]
 
-      defineFunction $ Function { args = args
-                                , ret = retType
-                                , body = body
-                                , egs = egs }
+      debug "done: common constr"
+      return $ Function { args = args
+                        , ret = retType
+                        , body = body
+                        , egs = egs }
 
-synthSplit :: [(Ident, Type)] -> Type -> Synth Ident
-synthSplit args retType = try [ synthSplitOn i args retType
-                              | i <- [0..length args - 1] ]
+synthSplit :: [(Ident, Type)] -> Type -> Ident -> Synth Function
+synthSplit args retType name = do
+  debug ": trying case split"
 
-synthSplitOn :: Int -> [(Ident, Type)] -> Type -> Synth Ident
-synthSplitOn splitOn args retType = do
+  try [ synthSplitOn i args retType name
+      | i <- [0..length args - 1] ]
+
+synthSplitOn :: Int -> [(Ident, Type)] -> Type -> Ident -> Synth Function
+synthSplitOn splitOn args retType _ = do
+  debug $ "- trying split on arg " ++ show splitOn
   egs <- asks examples
-  e <- asks env
+  e <- gets env
 
+  -- we cannot split on an argument which is not fully evaluated
   guard (not (argIsThunk splitOn egs))
-  let (splitArg, splitTy) = args !! splitOn
 
+  let (splitArg, splitTy) = args !! splitOn
   case splitTy of
     TyConstr dtName dtArgs -> case lookupDataType dtName e of
       Just (DataType tyArgs dtConstrs) -> do
         let s = zip tyArgs dtArgs :: Subst
-            dtConstrs' = [ DataConstructor i (map (sub s) ts)
-                         | DataConstructor i ts <- dtConstrs ]
+            concreteConstructors = [ DataConstructor i (map (sub s) ts)
+                                   | DataConstructor i ts <- dtConstrs ]
 
-        cases <- forM dtConstrs' $ \(DataConstructor con conArgTys) -> do
-          conArgs <- forM conArgTys $ \ty -> do
+        -- for each constructor in the datatype
+        cases <- forM concreteConstructors $ \(DataConstructor con constructorArgTypes) -> do
+          constructorArgs <- forM constructorArgTypes $ \ty -> do
             name <- fresh
             return (name, ty)
 
-          let allArgs = args ++ conArgs
-              egs' = [ Eg (ins ++ map Val conArgs') out
+          -- find the examples which use the appropriate constructor for this branch,
+          -- and update them (give them the deconstructed arguments as well as their
+          -- existing parameters)
+          let allArgs = args ++ constructorArgs
+              examples =
+                     [ Eg (ins ++ map Val conArgs') out
                      | Eg ins out <- egs
                      , let (con', conArgs') = deconstruct' (fromVal (ins !! splitOn))
                      , con == con']
 
-          g <- withExamples egs' (synth (map snd allArgs) retType)
-          return (con, map fst conArgs, applyMany (map Var (g : map fst allArgs)))
+          -- make a new function name to synthesise this case inside
+          caseFnName <- fresh
+          g <- withExamples examples (synthDef caseFnName (map snd allArgs) retType)
+
+          return (con, map fst constructorArgs, applyMany (map Var (g : map fst allArgs)))
 
         let body = Case (Var splitArg) cases
-        defineFunction $ Function { args = args
-                                  , ret = retType
-                                  , body = body
-                                  , egs = egs }
+        debug $ "done: split on arg " ++ show splitOn
+        return $ Function { args = args
+                          , ret = retType
+                          , body = body
+                          , egs = egs }
 
       Nothing -> fail "non-datatype or undefined"
     _ -> fail "can't split on non-ADT"
 
-synthRecurse :: [(Ident, Type)] -> Type -> Synth Ident
-synthRecurse args retType = try [ synthRecurseOn i args retType
-                                | i <- [0..length args - 1] ]
+synthRecurse :: [(Ident, Type)] -> Type -> Ident -> Synth Function
+synthRecurse args retType name = do
+  debug ": trying case split"
 
-synthRecurseOn :: Int -> [(Ident, Type)] -> Type -> Synth Ident
-synthRecurseOn splitOn args retType = do
+  try [ synthRecurseOn i args retType name
+      | i <- [0..length args - 1] ]
+
+synthRecurseOn :: Int -> [(Ident, Type)] -> Type -> Ident -> Synth Function
+synthRecurseOn splitOn args retType fnName = do
+  debug $ "- trying recurse on arg " ++ show splitOn ++ "; fnName = " ++ fnName
   egs <- asks examples
-  e <- asks env
+  e <- gets env
 
+  -- we cannot split on an argument which is not fully evaluated
   guard (not (argIsThunk splitOn egs))
+
   let (splitArg, splitTy) = args !! splitOn
-
-  fnName <- fresh
-
   case splitTy of
     TyConstr dtName dtArgs -> case lookupDataType dtName e of
       Just (DataType tyArgs dtConstrs) -> do
         let s = zip tyArgs dtArgs :: Subst
-            dtConstrs' = [ DataConstructor i (map (sub s) ts)
-                         | DataConstructor i ts <- dtConstrs ]
+            concreteConstructors = [ DataConstructor i (map (sub s) ts)
+                                   | DataConstructor i ts <- dtConstrs ]
 
-        cases <- forM dtConstrs' $ \(DataConstructor con conArgTys) -> do
-          conArgs <- forM conArgTys $ \ty -> do
+        -- for each constructor in the datatype
+        cases <- forM concreteConstructors $ \(DataConstructor con constructorArgTypes) -> do
+          constructorArgs <- forM constructorArgTypes $ \ty -> do
             name <- fresh
             return (name, ty)
+          
+          caseFnName <- fresh
+          recursiveCallName <- fresh
 
-          let allArgs = args ++ conArgs
-              egs' = [ Eg (ins ++ map Val conArgs') out
-                     | Eg ins out <- egs
-                     , let (con', conArgs') = deconstruct' (fromVal (ins !! splitOn))
-                     , con == con']
-              recursiveCalls = [ applyMany (map Var (fnName : map fst recArgs))
-                               | (i, (argName, argTy)) <- zip [0..] conArgs,
-                                 argTy == splitTy,
-                                 let recArgs = replace i (argName, splitTy) args ]
+          let recursiveArgs = forM args $ \(_, t) -> chooseRecursiveArg t constructorArgs
+              allArgs = args ++ constructorArgs ++ [(recursiveCallName, retType)]
+              constructorParams = map fst constructorArgs
+              functionCall = applyMany $ map Var (caseFnName : map fst allArgs)
 
-          g <- withExamples egs' (synth (map snd allArgs) retType)
+          -- TODO: simplify this code to be non-monadic?
+          (recursivePart, body) <- case recursiveArgs of
+            Nothing -> do
+              debug $ "could not find suitable recursive argument from options: " ++ show constructorArgs ++ " so synthesising normally"
 
-          let app = applyMany (map Var (g : map fst allArgs) ++ recursiveCalls)
+              return ( NoRecurse
+                     , functionCall )
+            Just recursiveArgs -> do
+              let recursiveCall = applyMany $ map Var (fnName : recursiveArgs)
+              
+              return ( Recurse recursiveCall
+                     , Let recursiveCallName recursiveCall functionCall )
+          
+          debug $ "body for " ++ con ++ " is: '" ++ show body 
 
-          return (con, map fst conArgs, app)
+          -- make a new function name to synthesise this case inside
+          return ( (caseFnName, allArgs, recursivePart)
+                 , (con, constructorParams, body) )
 
-        let body = Case (Var splitArg) cases
-        defineFunctionNamed fnName $
-          Function { args = args
-                   , ret = retType
-                   , body = body
-                   , egs = egs }
+        let body = Case (Var splitArg) (map snd cases)
+        let fn = Function { args = args
+                          , ret = retType
+                          , body = body
+                          , egs = egs }
+
+        -- attempt to actually synthesise the auxiliary functions
+        withFunction fnName fn $ forM_ cases $ \((caseFnName, allArgs, recursivePart), (con,_,_)) -> do
+          e <- gets env
+          
+          case recursivePart of
+            Recurse ex -> do
+              let fnType = finalise $ foldr (-->) retType (map snd allArgs ++ [retType])
+                  en = fromEnvironment e ++ [(caseFnName, (fnType, Local))]
+              -- define 'caseFnName : t1 -> t2 -> ...' in the environment
+              case runExcept (compile en ex) of
+                Left err -> do
+                  debug $ "! could not compile recursive call: '" ++ show ex ++ "': " ++ show err
+                  fail "compile error"
+                Right recursiveCall -> do
+                  -- the recursive call is currently being blocked by fnName not being defined
+                  let thunk = Thunk recursiveCall fnName
+
+                  -- find the examples which use the appropriate constructor for this branch,
+                  -- and update them (give them the deconstructed arguments as well as their
+                  -- existing parameters)
+                  let examples = [ Eg (ins ++ map Val conArgs' ++ [thunk]) out
+                                 | Eg ins out <- egs
+                                 , let (con', conArgs') = deconstruct' (fromVal (ins !! splitOn))
+                                 , con == con']
+
+                  withExamples examples (synthDef caseFnName (map snd allArgs) retType)
+            NoRecurse -> do
+              let examples = [ Eg (ins ++ map Val conArgs') out
+                             | Eg ins out <- egs
+                             , let (con', conArgs') = deconstruct' (fromVal (ins !! splitOn))
+                             , con == con' ]
+
+              withExamples examples (synthDef caseFnName (map snd allArgs) retType)
+
+        debug $ "done: recurse on arg " ++ show splitOn
+        return fn
 
       Nothing -> fail "non-datatype or undefined"
-    _ -> fail "can't split on non-ADT"
+    _nonADT -> fail "can't recurse on non-ADT"
+
+chooseRecursiveArg :: Type -> [(Ident, Type)] -> Maybe Ident
+chooseRecursiveArg t consArgs = fst <$> find (\(_, t') -> t == t') consArgs
+
+debug :: String -> Synth ()
+debug s = do
+  d <- asks depth
+  let prefix = concat (replicate d "* ")
+  traceM $ prefix ++ s
 
 replace :: Int -> a -> [a] -> [a]
 replace 0 x (y:ys) = x:ys
@@ -242,15 +377,38 @@ argIsThunk :: Int -> [Example] -> Bool
 argIsThunk n [] = False
 argIsThunk n ((Eg args _):_) = isThunk (args !! n)
 
-defineFunction :: Function -> Synth Ident
-defineFunction f = do
-  name <- fresh
-  defineFunctionNamed name f
+synthDef :: Ident -> [Type] -> Type -> Synth Ident
+synthDef name args ret = do
+  fn <- synth args ret name
+  defineFunctionNamed name fn
 
 defineFunctionNamed :: Ident -> Function -> Synth Ident
 defineFunctionNamed n f = do
-  modify $ \s@SynthState { functions = fns } -> s { functions = (n, f) : fns }
-  return n
+  e <- gets env
+
+  let compiled = compile (fromEnvironment e) (assemble f)
+  case runExcept compiled of
+    Left err -> do
+      debug $ "! could not compile function '" ++ n ++ "': " ++ show err
+      debug $ "  (" ++ n ++ " := " ++ show (body f) ++ ")"
+      fail "compile error"
+    Right fnTerm -> do
+      debug $ " : defined function '" ++ n ++ "': " ++ show fnTerm
+      modify $ \s -> s { functions = (n, f) : functions s
+                       , env = defineTerm n (getType f) fnTerm e }
+      return n
+
+undefineFunctionNamed :: Ident -> Synth ()
+undefineFunctionNamed n = do
+  modify $ \s -> s { functions = [ (n', f) | (n', f) <- functions s, n /= n' ]
+                   , env = undefineTerm n (env s) }
+
+withFunction :: Ident -> Function -> Synth a -> Synth a
+withFunction name f s = do
+  defineFunctionNamed name f
+  r <- s
+  undefineFunctionNamed name
+  return r
 
 exit :: Monad m => MaybeT m a
 exit = fail "ignored"
@@ -265,6 +423,11 @@ try (x:xs) = let x' = runMaybeT x in MaybeT $ do
 
 assemble :: Function -> Expr
 assemble (Function args _ body _) = foldr (Abs . fst) body args
+
+getType :: Function -> Scheme
+getType (Function args ret _ _) = 
+  let argTypes = map snd args
+  in finalise $ foldr (-->) ret argTypes
 
 collapse :: Functions -> Expr -> Expr
 collapse fns app@(App f x) = case unfoldApp app of
@@ -292,7 +455,7 @@ specialiseConstructor conTy ret = case runExcept (runUnify u) of
 
 lookupType :: Ident -> Synth (Maybe Scheme)
 lookupType x = do
-  ts <- asks (terms . env)
+  ts <- gets (terms . env)
   return $ fmap fst (lookup x ts)
 
 lookupType' :: Ident -> Synth Scheme
@@ -442,18 +605,22 @@ calls e i = i `elem` calledBy e
 toVal :: Value a => a -> Arg
 toVal = Val . toTerm
 
-test' env = synthesise env (tyList tyInt --> tyInt)
+(...) :: (b -> c) -> (a1 -> a2 -> b) -> a1 -> a2 -> c
+(...) = (.) . (.)
+
+test'' env = synthesise env "head" (tyList tyInt --> tyInt)
   [ Eg [toVal ([1, 2] :: [Int])] (toTerm (1 :: Int))
   , Eg [toVal ([0, 2, 3] :: [Int])] (toTerm (0 :: Int)) ]
 
-test env = synthesise env (tyInt --> tyList tyInt --> tyList tyInt)
+test' env = synthesise env "double" (tyInt --> tyList tyInt --> tyList tyInt)
   [ Eg [toVal (0 :: Int), toVal ([1] :: [Int])] (toTerm ([0, 0, 1] :: [Int]))
   , Eg [toVal (2 :: Int), toVal ([] :: [Int])] (toTerm ([2, 2] :: [Int])) ]
 
-test'' env = synthesise env (tyInt --> tyBool)
+test env = synthesise env "is_one" (tyInt --> tyBool)
   [ Eg [toVal (0 :: Int)] (toTerm False)
-  , Eg [toVal (1 :: Int)] (toTerm True) ]
+  , Eg [toVal (1 :: Int)] (toTerm True)
+  , Eg [toVal (2 :: Int)] (toTerm False) ]
 
-testStutter env = synthesise env (tyList tyInt --> tyList tyInt)
+testStutter env = synthesise env "stutter" (tyList tyInt --> tyList tyInt)
   [ Eg [toVal ([] :: [Int])] (toTerm ([] :: [Int]))
   , Eg [toVal ([1, 2] :: [Int])] (toTerm ([1, 1, 2, 2] :: [Int])) ]

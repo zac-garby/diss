@@ -1,9 +1,12 @@
 module Env ( Environment (..)
            , defaultEnv
            , defineTerm
+           , undefineTerm
            , defineDataType
            , lookupTerm
-           , lookupDataType ) where
+           , lookupDataType
+           , fromEnvironment
+           , envTerms ) where
 
 import Data.Char
 
@@ -20,6 +23,10 @@ defineTerm :: String -> Scheme -> Term -> Environment -> Environment
 defineTerm name sch val (Environment terms types) =
   Environment (insertKV name (sch, val) terms) types
 
+undefineTerm :: String -> Environment -> Environment
+undefineTerm name (Environment terms types) =
+  Environment (deleteKV name terms) types
+
 defineDataType :: String -> DataType -> Environment -> Environment
 defineDataType name dt (Environment terms types) =
   Environment terms (insertKV name dt types)
@@ -29,6 +36,12 @@ lookupTerm name (Environment terms _) = lookup name terms
 
 lookupDataType :: String -> Environment -> Maybe DataType
 lookupDataType name (Environment _ types) = lookup name types
+
+fromEnvironment :: Environment -> Env
+fromEnvironment emt = [ (n, (sch, Global)) | (n, (sch, _)) <- terms emt ]
+
+envTerms :: Environment -> [Term]
+envTerms emt = [ t | (_, (_, t)) <- terms emt ]
 
 a = TyVar "a"
 b = TyVar "b"
@@ -92,3 +105,9 @@ insertKV k v [] = [(k, v)]
 insertKV k v ((k', v'):xs)
   | k == k' = (k, v) : xs
   | otherwise = (k', v') : insertKV k v xs
+
+deleteKV :: Eq a => a -> [(a, b)] -> [(a, b)]
+deleteKV k [] = []
+deleteKV k ((k', v'):xs)
+  | k == k' = xs
+  | otherwise = (k', v') : deleteKV k xs

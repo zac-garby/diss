@@ -45,7 +45,7 @@ repl :: Interactive ()
 repl = forever $ do
   liftIO $ putStr "► "
   liftIO $ hFlush stdout
-  l <- liftIO $ getLine
+  l <- liftIO getLine
 
   oldEnv <- get
   handleCommand l `catchError` restore oldEnv
@@ -147,13 +147,13 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  case testStutter env of
+  case test env of
     Just (i, fns) -> do
       let fns' = removeRedundant i (unwindFrom i fns)
           (Just fn) = lookup i fns'
-      term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
+      --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
       liftIO $ putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns')
-      liftIO $ putStrLn $ "compiled = " ++ show term
+      --liftIO $ putStrLn $ "compiled = " ++ show term
     Nothing -> liftIO $ putStrLn "synthesis failed! :o"
 
 typecheckProgram :: Program -> Interactive ()
@@ -208,12 +208,6 @@ insertConstructors :: Ident -> DataType -> Interactive ()
 insertConstructors name (DataType tyArgs constrs) = forM_ constrs $ \(DataConstructor id args) -> do
   let sch = finalise $ foldr (-->) (TyConstr name (map TyVar tyArgs)) args
   insertTerm id sch (CConstr id)
-
-fromEnvironment :: Environment -> Env
-fromEnvironment emt = [ (n, (sch, Global)) | (n, (sch, _)) <- terms emt ]
-
-envTerms :: Environment -> [Term]
-envTerms emt = [ t | (_, (_, t)) <- terms emt ]
 
 (??) :: Except a b -> (a -> Error) -> Interactive b
 e ?? f = case runExcept e of

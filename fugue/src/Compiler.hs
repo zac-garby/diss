@@ -32,6 +32,7 @@ data Term = CVar Index
           | CCase Term [(Ident, Term)]
           | CTuple [Term]
           | CBuiltin EvalType (Term -> Term)
+          | CThonk Ident [Term]
 
 instance Show Term where
   show (CVar i) = show i
@@ -51,6 +52,7 @@ instance Show Term where
   show (CBuiltin Full f) = "<builtin>"
   show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
   show (CBuiltin None f) = "<builtin (no eval)>"
+  show (CThonk f args) = "<" ++ f ++ " " ++ unwords (map show args) ++ ">"
 
 instance Eq Term where
   (CInt x) == (CInt y) = x == y
@@ -65,6 +67,10 @@ bracket s = "(" ++ s ++ ")"
 
 data CompilerError = UndefinedVariable Ident
                    | FoundHole
+
+instance Show CompilerError where
+  show (UndefinedVariable v) = "undeclared variable: " ++ v
+  show FoundHole = "attempted to compile an incomplete expression containing a hole"
 
 type Compiler = ReaderT [Ident] (Except CompilerError)
 
