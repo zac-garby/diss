@@ -148,11 +148,11 @@ loadFile file = do
   
   env <- get
   case test env of
-    Just (i, fns) -> do
-      let fns' = removeRedundant i (unwindFrom i fns)
-          (Just fn) = lookup i fns'
+    Just (i, fn, fns) -> do
+      liftIO $ forM_ fns $ \(name, Function args ret body _) -> do
+        putStrLn $ name ++ " " ++ unwords (map fst args) ++ " := " ++ prettyExpr body
       --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
-      liftIO $ putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns')
+      liftIO $ putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
       --liftIO $ putStrLn $ "compiled = " ++ show term
     Nothing -> liftIO $ putStrLn "synthesis failed! :o"
 
