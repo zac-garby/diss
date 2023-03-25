@@ -59,6 +59,9 @@ data Body
 
   -- recurseArg [(constrName, [conArgs...], recursivePart, bodyName, [bodyArgs...])]
   | SynthRecurse Ident [(Ident, [Ident], RecursivePart, Ident, [Ident])]
+
+  -- a hole
+  | SynthHole
   deriving Show
 
 data RecursivePart =
@@ -183,17 +186,21 @@ synth name argTypes ret = do
     debug "  : failed: out of depth"
     fail "out of depth"
 
--- synthNoEgs :: SynthImpl
--- synthNoEgs args retType _ = do
---   debug ": trying synth no egs"
+synthNoEgs :: SynthImpl
+synthNoEgs args retType _ = do
+  debug ": trying synth no egs"
 
---   egs <- asks examples
+  egs <- asks examples
 
---   if null egs then do
---     debug "done: synth no egs"
---     return $ Function args retType (Hole 0) []
---   else
---     fail "there are examples so this rule doesn't apply"
+  if null egs then do
+    debug "done: synth no egs"
+    -- return $ Function args retType (Hole 0) []
+    return $ Fn { args = args
+                , ret = retType
+                , body = SynthHole
+                , egs = [] }
+  else
+    fail "there are examples so this rule doesn't apply"
 
 -- synthOne :: SynthCase
 -- synthOne args retType _ = do
@@ -218,9 +225,9 @@ synthTrivial args retType _ = do
           | all (\(Eg egArgs egRes) -> egArgs !! n `hasVal` egRes) egs = do
             debug "done: synth trivial"
             return $ Fn { args = args
-                              , ret = retType
-                              , body = SynthVar (fst $ args !! n)
-                              , egs = egs }
+                        , ret = retType
+                        , body = SynthVar (fst $ args !! n)
+                        , egs = egs }
           | otherwise = go egs (n + 1)
 
 {-
@@ -507,6 +514,7 @@ assembleBody (SynthRecurse x cases) =
        [ (con, conArgs, b)
        | (con, conArgs, rp, fn, fnArgs) <- cases
        , let b = assembleRecursiveBody rp (applyManyIdents (fn : fnArgs)) ]
+assembleBody SynthHole = Hole 0
 
 assembleRecursiveBody :: RecursivePart -> Expr -> Expr
 assembleRecursiveBody (Recurse b recFn recArgs) body
@@ -571,6 +579,7 @@ applyBody (Fn arguments _ body _) args = case body of
   SynthConstr s x0 -> undefined
   SynthCase s x0 -> undefined
   SynthRecurse s x0 -> undefined
+  SynthHole -> undefined
   where params = map fst arguments
         get x = fromJust $ lookup x (zip params args)
 
