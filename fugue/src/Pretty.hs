@@ -43,6 +43,10 @@ bracketExpr ex@(App f x) = "(" ++ prettyExpr ex ++ ")"
 bracketExpr ex@(TypeSpec e t) = "(" ++ prettyExpr ex ++ ")"
 bracketExpr ex = prettyExpr ex
 
+prettyClosedTerm :: ClosedTerm -> String
+prettyClosedTerm (ConstrApp c []) = c
+prettyClosedTerm (ConstrApp c ts) = c ++ " " ++ unwords (map prettyClosedTerm ts)
+
 -- a pretty-printer for terms.
 -- if the term is not designed to be user-visible, Nothing is returned
 prettyTerm :: Term -> Maybe String
@@ -109,11 +113,11 @@ prettyFunction name (Function args ret body egs) =
   name ++ " " ++ unwords (map fst args) ++ " = " ++ prettyExpr body
 
 prettyExample :: Example -> String
-prettyExample (Eg args ret) = intercalate ", " (map prettyEgArg args) ++ " => " ++ prettyTerm' ret
+prettyExample (Eg args ret) = intercalate ", " (map prettyEgArg args) ++ " => " ++ prettyClosedTerm ret
 
 prettyEgArg :: Arg -> String
-prettyEgArg (Val v) = prettyTerm' v
-prettyEgArg (Thunk t i) = "<" ++ i ++ " | " ++ prettyTerm' t ++ ">"
+prettyEgArg (Val v) = prettyClosedTerm v
+prettyEgArg (Thunk t i) = "<" ++ i ++ " | " ++ show t ++ ">"
 
 prettyDataTypes :: [(Ident, DataType)] -> String
 prettyDataTypes dts = intercalate "\n" $ do

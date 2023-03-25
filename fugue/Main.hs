@@ -149,6 +149,7 @@ loadFile file = do
   env <- get
   case test env of
     Just (i, fn, fns) -> do
+      liftIO $ putStrLn $ "synthesised " ++ show (length fns) ++ " functions:"
       liftIO $ forM_ fns $ \(name, Function args ret body _) -> do
         putStrLn $ name ++ " " ++ unwords (map fst args) ++ " := " ++ prettyExpr body
       --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr

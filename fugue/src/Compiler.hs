@@ -32,7 +32,6 @@ data Term = CVar Index
           | CCase Term [(Ident, Term)]
           | CTuple [Term]
           | CBuiltin EvalType (Term -> Term)
-          | CThonk Ident [Term]
 
 instance Show Term where
   show (CVar i) = show i
@@ -52,7 +51,6 @@ instance Show Term where
   show (CBuiltin Full f) = "<builtin>"
   show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
   show (CBuiltin None f) = "<builtin (no eval)>"
-  show (CThonk f args) = "<" ++ f ++ " " ++ unwords (map show args) ++ ">"
 
 instance Eq Term where
   (CInt x) == (CInt y) = x == y

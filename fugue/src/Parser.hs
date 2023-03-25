@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use <$>" #-}
+
 module Parser ( Expr (..)
               , Definition (..)
               , DataConstructor (..)
