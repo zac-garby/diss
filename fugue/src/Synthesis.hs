@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Synthesis
   ( Context (..)
@@ -18,6 +19,9 @@ module Synthesis
 
   , test
   , testStutter
+  , Thunk (..)
+  , Body (..)
+  , applyBody
   ) where
 
 import Data.Maybe
@@ -31,7 +35,7 @@ import Debug.Trace
 import Parser
 import Compiler
 import Types
-import Env
+import Env ( fromEnvironment, Environment(types) )
 import Infer
 
 data Context = Context
@@ -76,24 +80,34 @@ type SynthFunctions = [(Ident, SynthFunction)]
 
 data Thunk
   = ThunkConstr Ident [Thunk] -- a constructor call
-  | ThunkRecurse Ident [ClosedTerm] -- a (recursive) function call
-  deriving Show
+  | ThunkCall Ident [ClosedTerm] -- a (maybe recursive) function call
+  | ThunkTerm ClosedTerm
+
+instance Show Thunk where
+  show (ThunkConstr con []) = con
+  show (ThunkConstr con ts) = "(" ++ con ++ " " ++ unwords (map show ts) ++ ")"
+  show (ThunkCall f ts) = "(" ++ f ++ " " ++ unwords (map show ts) ++ ")"
+  show (ThunkTerm t) = show t
 
 -- a ClosedTerm is similar to a Term, but is always a fully-evaluated value.
 -- furthermore, it contains only values that can be used as synthesis examples,
 -- and so doesn't allow abstractions, etc. it can always be represented as
 -- the application of some constructor to zero or more arguments, also closed terms.
 data ClosedTerm = ConstrApp Ident [ClosedTerm]
-  deriving (Show, Eq)
+  deriving Eq
+
+instance Show ClosedTerm where
+  show (ConstrApp i []) = i
+  show (ConstrApp i ts) = "(" ++ i ++ " " ++ unwords (map show ts) ++ ")"
 
 -- an Arg represents an argument of an example, and is either a fully-evaluated term Val,
--- or a thunk. If it is a thunk, it is a partially-evaluated term, along
--- with the name of the function whose definition the evaluation is blocked by.
-data Arg = Val ClosedTerm | Thunk Thunk Ident
+-- or a thunk. If it is a thunk, it is a partially-evaluated term. A thunk
+-- will also track which functions it is being blocked by (i.e. waiting for).
+data Arg = Val ClosedTerm | Thunk Thunk [Ident]
 
 instance Show Arg where
   show (Val t) = show t
-  show (Thunk t i) = "<" ++ i ++ " | " ++ show t ++ ">"
+  show (Thunk t is) = "<" ++ show t ++ "|" ++ unwords is ++ ">"
 
 data Example = Eg [Arg] ClosedTerm
   deriving Show
@@ -127,7 +141,6 @@ synthesise env dts fnName goal egs = case runSynth defaultState ctx problem of
   Just (fn, fns) ->
     let fn' = assembleFn fn
         fns' = removeRedundant fnName (unwindFrom fnName fns)
-        -- fns' = [ (name, assembleFn fn) | (name, fn) <- fns ]
     in Just (fnName, fn', fns')
   where ctx = Context {
           examples = egs
@@ -160,13 +173,28 @@ synth :: Ident -> [Type] -> Type -> Synth SynthFunction
 synth name argTypes ret = do
   d <- asks depth
   dMax <- gets maxDepth
+  egs <- asks examples
 
   debug $ "* synthesising " ++ name ++ " : " ++ intercalate " -> " (map show argTypes) ++ " -> " ++ show ret
 
-  egs <- asks examples
-  forM_ egs $ \(Eg ins out) -> debug $ "  { " ++ unwords (map show ins) ++ " -> " ++ show out ++ " }"
+  forM_ egs $ \(Eg ins out) ->
+    debug $ "  { " ++ intercalate ", " (map show ins) ++ " -> " ++ show out ++ " }"
 
+  -- TODO: so, generating holes is really useful obviously, but it has a few
+  -- issues. most notably, it often leads to less efficient solutions because
+  -- the synthesiser gets "lazy" (not in that way).
+  --
+  -- possible solutions:
+  --  * generate multiple solutions; select the "best" one
+  --     - type Synth a = RWST Context SynthFunctions SynthState (MaybeT [a])?
+  --  * give a penalty for using holes
+  --     - this would be ~equivalent to "holding" a hole solution for a few
+  --       depth iterations, and if nothing is found in n iterations the hole
+  --       solution is accepted.
+  --  * disallow holes / make them a user option
   guard $ not (null egs)
+
+  updateExamples
 
   if d < dMax then do
     args <- forM argTypes $ \t -> do
@@ -174,7 +202,8 @@ synth name argTypes ret = do
       return (name, t)
 
     f <- local (\c -> c { depth = d + 1 }) $
-      try [ synthTrivial args ret name
+      try [ --synthNoEgs args ret name
+            synthTrivial args ret name
           , synthRecurse args ret name
           , synthCommonConstr args ret name
           , synthSplit args ret name ]
@@ -194,24 +223,12 @@ synthNoEgs args retType _ = do
 
   if null egs then do
     debug "done: synth no egs"
-    -- return $ Function args retType (Hole 0) []
     return $ Fn { args = args
                 , ret = retType
                 , body = SynthHole
                 , egs = [] }
   else
     fail "there are examples so this rule doesn't apply"
-
--- synthOne :: SynthCase
--- synthOne args retType _ = do
---   debug ": trying synth one eg"
-
---   egs <- asks examples
---   case egs of
---     [ Eg _ out ] -> do
---       debug "done: synth one eg"
---       return $ Function args retType _ []
---     _doesNotApply -> fail "there are either no examples or more than one"
 
 synthTrivial :: SynthImpl
 synthTrivial args retType _ = do
@@ -248,22 +265,27 @@ synthCommonConstr args retType _ = do
 
       Forall _ conTy <- lookupType' con
       let (conArgTys, _) = unfoldFnTy (specialiseConstructor conTy retType)
-          (conArgs, d) = unzip [ (args, deconstruct' o) | Eg args o <- egs ]
-          (cons, d') = unzip d
-          d'T = transpose d'
-          conEgs = [ zipWith Eg conArgs d | d <- d'T ]
+          (conArgs, apps) = unzip [ (args, deconstruct' o) | Eg args o <- egs ]
+          (cons, argsByCon) = unzip apps
+          argsByIndex = transpose argsByCon
+          conEgs = [ zipWith Eg conArgs d | d <- argsByIndex ]
           (argNames, argTypes) = unzip args
 
-      names <- forM (zip conArgTys conEgs) $ \(conArgTy, egs) -> do
-        fnName <- fresh
-        f <- withExamples egs (synth fnName argTypes conArgTy)
-        return (fnName, f)
+      -- construct the function - the output of this synthesis.
+      -- the sub-functions need not be synthesised yet, since only
+      -- their names need to be known at this point.
+      names <- forM conArgTys (const fresh)
+      let fn = Fn { args = args
+                  , ret = retType
+                  , body = SynthConstr con [ (n, argNames) | n <- names ]
+                  , egs = egs }
+
+      -- actually synthesise the sub-functions
+      forM_ (zip3 names conArgTys conEgs) $ \(fnName, conArgTy, egs) ->
+        withExamples egs (synth fnName argTypes conArgTy)
 
       debug "done: common constr"
-      return $ Fn { args = args
-                        , ret = retType
-                        , body = SynthConstr con [ (n, argNames) | (n, _) <- names ]
-                        , egs = egs }
+      return fn
 
 synthSplit :: [(Ident, Type)] -> Type -> Ident -> Synth SynthFunction
 synthSplit args retType name = do
@@ -338,7 +360,9 @@ synthRecurseOn splitOn args retType fnName = do
   dts <- asks dataTypes
 
   -- we cannot split on an argument which is not fully evaluated. all example arguments
-  -- must be fully evaluated values
+  -- must be fully evaluated values, for simplicity. strictly speaking, only the argument
+  -- being split on needs to be a non-thunk, but in most cases it won't be useful to
+  -- split when there is already a thunk so we ignore these cases.
   guard $ not (egHasThunk egs)
 
   let (splitArg, splitTy) = args !! splitOn
@@ -349,7 +373,10 @@ synthRecurseOn splitOn args retType fnName = do
             concreteConstructors = [ DataConstructor i (map (sub s) ts)
                                    | DataConstructor i ts <- dtConstrs ]
 
-        -- for each constructor in the datatype
+        -- for each constructor in the datatype, see if we can find recursive arguments
+        -- consisting of parts of the constructor. either way, keep track of whether or
+        -- not we want to recurse for this case, and store all relevant info/names for
+        -- later synthesis.
         cases <- forM concreteConstructors $ \(DataConstructor con constructorArgTypes) -> do
           constructorArgs <- forM constructorArgTypes $ \ty -> do
             name <- fresh
@@ -358,6 +385,9 @@ synthRecurseOn splitOn args retType fnName = do
           caseFnName <- fresh
           recursiveCallName <- fresh
 
+          -- right now, the first usable constructor argument is selected. this is not
+          -- always optimal (e.g. in the case of trees), so this should be changed in
+          -- the future to attempt synthesis on each one in turn.
           let recursiveArgs = forM args $ \(_, t) -> chooseRecursiveArg t constructorArgs
               allArgs = args ++ constructorArgs
               constructorParams = map fst constructorArgs
@@ -369,14 +399,13 @@ synthRecurseOn splitOn args retType fnName = do
                     let allArgs' = allArgs ++ [(recursiveCallName, retType)]
                     in (Recurse recursiveCallName fnName recursiveArgs, allArgs')
 
-          -- make a new function name to synthesise this case inside
-          return ( (caseFnName, allArgs, recursivePart)
-                 , (con, constructorParams, bodyArgs) )
+          return (caseFnName, allArgs, recursivePart, con, constructorParams, bodyArgs)
 
-        -- let body = Case (Var splitArg) (map snd cases)
+        -- the body of the entire recursive function being synthesised here is a case
+        -- split, where each case either performs a recursive call or doesn't.
         let body = SynthRecurse splitArg
               [ (constrName, conArgs, recursivePart, caseFnName, map fst bodyArgs)
-              | ((caseFnName, allArgs, recursivePart), (constrName, conArgs, bodyArgs)) <- cases
+              | (caseFnName, allArgs, recursivePart, constrName, conArgs, bodyArgs) <- cases
               , let fnArgs = map fst bodyArgs ]
 
         let fn = Fn { args = args
@@ -384,32 +413,34 @@ synthRecurseOn splitOn args retType fnName = do
                     , body = body
                     , egs = egs }
 
-        -- attempt to actually synthesise the auxiliary functions
-        -- TODO: 'withFunction fnName fn' needs to be able to see
-        withFunction fnName fn $ forM_ cases $ \((caseFnName, allArgs, recursivePart), (con,conParams,_)) -> do
-          e <- asks env
+        -- with this function (the recursive one being defined - "fnName") temporarily added
+        -- to the namespace, we synthesise each case in turn.
+        withFunction fnName fn $
+          forM_ cases $ \(caseFnName, allArgs, recursivePart, con,conParams, _) -> do
+            e <- asks env
 
-          case recursivePart of
-            Recurse recCall fnName recParams -> do
-              let fnType = finalise $ foldr (-->) retType (map snd allArgs ++ [retType])
-                  lookupArg args name = fromJust $ lookup name args
-                  --thunk = Thunk (ThunkRecurse fnName recParams) fnName
-                  examples = [ Eg (ins ++ map Val conArgs ++ [thunk]) out
-                             | Eg ins out <- egs
-                             , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
-                             , con == con'
-                             , let recArgs = map (lookupArg (zip conParams conArgs)) recParams
-                             , let thunk = Thunk (ThunkRecurse fnName recArgs) fnName ]
+            case recursivePart of
+              Recurse recCall fnName recParams -> do
+                -- when a recursive call is made, we need to construct a thunk to pass as
+                -- an example to the sub-function.
+                let fnType = finalise $ foldr (-->) retType (map snd allArgs ++ [retType])
+                    lookupArg args name = fromJust $ lookup name args
+                    examples = [ Eg (ins ++ map Val conArgs ++ [thunk]) out
+                               | Eg ins out <- egs
+                               , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
+                               , con == con'
+                               , let recArgs = map (lookupArg (zip conParams conArgs)) recParams
+                               , let thunk = Thunk (ThunkCall fnName recArgs) [fnName] ]
 
-              withExamples examples $ synth caseFnName (map snd allArgs ++ [retType]) retType
+                withExamples examples $ synth caseFnName (map snd allArgs ++ [retType]) retType
 
-            NoRecurse -> do
-              let examples = [ Eg (ins ++ map Val conArgs) out
-                              | Eg ins out <- egs
-                              , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
-                              , con == con' ]
+              NoRecurse -> do
+                let examples = [ Eg (ins ++ map Val conArgs) out
+                                | Eg ins out <- egs
+                                , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
+                                , con == con' ]
 
-              withExamples examples $ synth caseFnName (map snd allArgs) retType
+                withExamples examples $ synth caseFnName (map snd allArgs) retType
 
         debug $ "done: recurse on arg " ++ show splitOn
         return fn
@@ -483,16 +514,6 @@ withFunctionInEnv name f e =
       { env = insertKV name (getType f, Local) (env c)
       , fns = (name, f) : fns c })
 
-{-
-try' ::  Monad m => [MaybeT m a] -> MaybeT m a
-try' [] = fail "exhausted all possibilities"
-try' (x:xs) = let x' = runMaybeT x in MaybeT $ do
-  m <- x'
-  case m of
-    Nothing -> runMaybeT (try xs)
-    Just r -> return (Just r)
--}
-
 try :: Monoid w => [RWST r w s Maybe a] -> RWST r w s Maybe a
 try [] = fail "exhausted all possibilities"
 try (x:xs) = rwsT $ \r s -> case runRWST x r s of
@@ -564,26 +585,77 @@ lookupType x = do
 lookupType' :: Ident -> Synth Scheme
 lookupType' x = fromJust <$> lookupType x
 
+lookupFn :: Ident -> Synth (Maybe SynthFunction)
+lookupFn x = do
+  fns <- asks fns
+  return $ lookup x fns
+
 withExamples :: [Example] -> Synth a -> Synth a
 withExamples egs = local (\l -> l { examples = egs })
 
-updateThunk :: Ident -> SynthFunction -> Thunk -> Thunk
-updateThunk i fn (ThunkConstr n ts) = ThunkConstr n (map (updateThunk i fn) ts)
-updateThunk i fn th@(ThunkRecurse n args)
-  | i == n = undefined
-  | otherwise = th
+-- TODO: I need to *always* be able to provide a SynthFunction to the
+-- subfunctions being synthesised, so they can update their examples.
+-- updateExamplesWith :: Ident -> SynthFunction -> Synth ()
+-- ... or do i?
+-- inefficiently, i can just check for all thunks if they can be updated
+-- before each synth i guess?
 
-applyBody :: SynthFunction -> [Thunk] -> Thunk
-applyBody (Fn arguments _ body _) args = case body of
-  SynthVar x -> get x
-  SynthConstr s x0 -> undefined
-  SynthCase s x0 -> undefined
-  SynthRecurse s x0 -> undefined
-  SynthHole -> undefined
-  where params = map fst arguments
-        get x = fromJust $ lookup x (zip params args)
+updateExamples :: Synth [Example]
+updateExamples = do
+  egs <- asks examples
+  fns <- asks fns
 
-fnNames = [ "fn" ++ show i | i <- [0..] ]
+  let ins = transpose [ i | Eg i _ <- egs ]
+      has = map fst fns
+  debug $ "updating examples, with fns: " ++ unwords has
+
+  forM_ ins $ \case
+    (Thunk t fs:xs) -> do
+      debug $ " - thunk " ++ show t ++ " depends on " ++ unwords fs
+      debug $ "   (can update: " ++ show (canUpdate fs has) ++ ")"
+    _ -> return ()
+  return egs
+
+  where canUpdate deps has = all (`elem` has) deps
+
+applyBody :: [Ident] -> Body -> [ClosedTerm] -> (Thunk, [Ident])
+applyBody params body args = case body of
+    SynthVar x ->
+      (ThunkTerm $ get x, [])
+
+    SynthConstr con calls ->
+      let th = ThunkConstr con [ ThunkCall name (map get args) | (name, args) <- calls ] 
+      in (th, map fst calls)
+
+    SynthCase x cases ->
+      let (con, conArgs) = deconstruct' (get x)
+          (_, conParams, fnName, fnArgs) =
+            fromJust $ find (\(con', _, _, _) -> con == con') cases
+          allArgs = zip (params ++ conParams) (args ++ conArgs)
+          fnArgVals = map (getIn allArgs) fnArgs
+          th = ThunkCall fnName fnArgVals
+      in (th, [fnName])
+
+    SynthRecurse s x0 -> undefined
+
+    SynthHole -> undefined
+  where getIn as x = fromJust $ lookup x as
+        get = getIn (zip params args)
+        call f xs = ThunkCall f (map get xs)
+
+updateThunkWith :: Ident -> SynthFunction -> Thunk -> (Thunk, [Ident])
+updateThunkWith fnName fn@(Fn args _ body _) th = case th of
+  ThunkConstr s ths ->
+    let (thunks, deps) = unzip (map (updateThunkWith fnName fn) ths)
+    in (ThunkConstr s thunks, nub $ concat deps)
+
+  ThunkCall callFn callArgs ->
+    if callFn == fnName then
+      applyBody (map fst args) body callArgs 
+    else
+      (th, [callFn])
+  
+  ThunkTerm t -> (th, [])
 
 deconstruct :: ClosedTerm -> Maybe (Ident, [ClosedTerm])
 deconstruct (ConstrApp i args) = Just (i, args)
@@ -725,8 +797,8 @@ calledBy (LitTuple xs) = concatMap calledBy xs
 calledBy (TypeSpec a _) = calledBy a
 calledBy _ = []
 
-allCalledBy :: Ident -> Functions -> [Ident]
-allCalledBy x fns = go x fns []
+allFunctionsUsedBy :: Ident -> Functions -> [Ident]
+allFunctionsUsedBy x fns = go x fns []
   where go :: Ident -> Functions -> [Ident] -> [Ident]
         go x fns visited
           | x `elem` visited = visited
@@ -738,7 +810,7 @@ allCalledBy x fns = go x fns []
 
 removeRedundant :: Ident -> Functions -> Functions
 removeRedundant x fns = filter ((`elem` used) . fst) fns
-  where used = allCalledBy x fns
+  where used = allFunctionsUsedBy x fns
 
 calls :: Expr -> Ident -> Bool
 calls e i = i `elem` calledBy e

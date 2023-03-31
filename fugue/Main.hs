@@ -147,7 +147,7 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  case test env of
+  case testStutter env of
     Just (i, fn, fns) -> do
       liftIO $ putStrLn $ "synthesised " ++ show (length fns) ++ " functions:"
       liftIO $ forM_ fns $ \(name, Function args ret body _) -> do
