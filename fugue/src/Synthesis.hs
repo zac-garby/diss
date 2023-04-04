@@ -219,7 +219,7 @@ synth name argTypes ret = do
 
       forM_ egs' $ \(Eg ins out) ->
         debug $ "  { " ++ intercalate ", " (map show ins) ++ " -> " ++ show out ++ " }"
-      
+
       withExamples egs' $ try
           [ --synthNoEgs args ret name
             synthUnify fnArgs ret name
@@ -442,7 +442,7 @@ synthRecurseOn splitOn args retType fnName = do
                     , ret = retType
                     , body = body
                     , egs = egs }
-        
+
         debug $ "recursive body = " ++ show body
 
         -- with this function (the recursive one being defined - "fnName") temporarily added
@@ -498,7 +498,7 @@ synthUnifyOn i args retType fnName = do
 
   let insAt_i = transpose (map ins egs) !! i
       outs = map out egs
-  
+
   debug $ " - trying unify on " ++ show i ++ "; insAt_i = " ++ show insAt_i ++ "; outs = " ++ show outs
 
   case concat <$> zipWithM (unifyArg fnName) outs insAt_i of
@@ -510,7 +510,7 @@ synthUnifyOn i args retType fnName = do
       let egs' = [ updateThunkCall fnName o' eg
                  | (eg, Eg _ o') <- zip egs unifyEgs ]
                  ++ unifyEgs -- ?
-      
+
       withExamples egs' $ synth fnName (map snd args) retType
     Nothing -> fail "couldn't unify"
 
@@ -546,7 +546,7 @@ updateThunkCall :: Ident -> ClosedTerm -> Example -> Example
 updateThunkCall i t (Eg ins out) = Eg (map goArg ins) out
   where goArg (Thunk th deps) = Thunk (replaceThunkCall i t th) (deps \\\ [i])
         goArg (Val v) = Val v
-      
+
 replaceThunkCall :: Ident -> ClosedTerm -> Thunk -> Thunk
 replaceThunkCall f t (ThunkConstr con ths) = ThunkConstr con (map (replaceThunkCall f t) ths)
 replaceThunkCall f t (ThunkCall f' args)
@@ -711,32 +711,28 @@ updateExamples egs = do
       insT = transpose ins
       has = map fst fns
 
-  r <- forM insT $ \c -> if canUpdateAny c has then do
-      new <- updateThunks c
-      return (new, True)
-    else
-      return (c, False)
+  r <- forM insT $ \c -> case canUpdateAny c has of
+      [] -> return (c, False)
+      updatable -> do
+        new <- updateThunks updatable c
+        return (new, True)
 
   let (ins'T, didUpdate) = unzip r
-
-  let ins' = transpose ins'T
+      ins' = transpose ins'T
 
   return ([ Eg i ret | (i, ret) <- zip ins' rets ], or didUpdate)
 
-  where canUpdate deps has = not (null deps) && all (`elem` has) deps
-
-        canUpdateAny [] _ = False
-        canUpdateAny (Thunk t fs:xs) has = canUpdate fs has || canUpdateAny xs has
+  where canUpdateAny [] _ = []
+        canUpdateAny (Thunk t fs:xs) has = fs `intersect` has ++ canUpdateAny xs has
         canUpdateAny (_:xs) has = canUpdateAny xs has
 
-        updateThunks [] = return []
-        updateThunks (Thunk t fs:xs) = do
-          (t', fs') <- updateThunk t fs
-          rest <- updateThunks xs
+        updateThunks :: [Ident] -> [Arg] -> Synth [Arg]
+        updateThunks updatable [] = return []
+        updateThunks updatable (Thunk t fs:xs) = do
+          (t', fs') <- updateThunk t (fs `intersect` updatable)
+          rest <- updateThunks updatable xs
           return (Thunk t' fs' : rest)
-        updateThunks (x:xs) = do
-          xs' <- updateThunks xs
-          return (x : xs')
+        updateThunks updatable (x:xs) = (x:) <$> updateThunks updatable xs
 
 applyBody :: [Ident] -> Body -> [ClosedTerm] -> (Thunk, [Ident])
 applyBody params body args = case body of
