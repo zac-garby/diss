@@ -1,5 +1,4 @@
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE LambdaCase #-}
 
 module Synthesis
   ( Context (..)
@@ -22,6 +21,7 @@ module Synthesis
   , Thunk (..)
   , Body (..)
   , applyBody
+  , unifyThunk
   ) where
 
 import Data.Maybe
@@ -37,6 +37,7 @@ import Compiler
 import Types
 import Env ( fromEnvironment, Environment(types) )
 import Infer
+import Text.Read
 
 data Context = Context
   { examples :: [Example]
@@ -81,10 +82,14 @@ type SynthFunctions = [(Ident, SynthFunction)]
 data Thunk
   = ThunkConstr Ident [Thunk] -- a constructor call
   | ThunkCall Ident [ClosedTerm] -- a (maybe recursive) function call
-  | ThunkRecLet Thunk [Ident] Ident [ClosedTerm]-- let x = th in f' a' b' c' {x}
+  | ThunkRecLet Thunk [Ident] Ident [ClosedTerm]-- let x = <th | deps> in f' a' b' c' {x}
   | ThunkTerm ClosedTerm
 
 instance Show Thunk where
+  show (ThunkConstr "Zero" []) = "0"
+  show (ThunkConstr "Suc" [t]) = case readMaybe (show t) :: Maybe Int of
+    Just n -> show (1 + n)
+    Nothing -> "(Suc " ++ show t ++ ")"
   show (ThunkConstr con []) = con
   show (ThunkConstr con ts) = "(" ++ con ++ " " ++ unwords (map show ts) ++ ")"
   show (ThunkCall f ts) = "(" ++ f ++ " " ++ unwords (map show ts) ++ ")"
@@ -101,6 +106,12 @@ data ClosedTerm = ConstrApp Ident [ClosedTerm]
   deriving Eq
 
 instance Show ClosedTerm where
+  show (ConstrApp "Zero" []) = "0"
+  show (ConstrApp "Suc" [t]) = case readMaybe (show t) :: Maybe Int of
+    Just n -> show (1 + n)
+    Nothing -> "(Suc " ++ show t ++ ")"
+  show (ConstrApp "Nil" []) = "[]"
+  show (ConstrApp "Cons" [l, r]) = "(" ++ show l ++ " :: " ++ show r ++ ")"
   show (ConstrApp i []) = i
   show (ConstrApp i ts) = "(" ++ i ++ " " ++ unwords (map show ts) ++ ")"
 
@@ -113,7 +124,9 @@ instance Show Arg where
   show (Val t) = show t
   show (Thunk t is) = "<" ++ show t ++ "|" ++ unwords is ++ ">"
 
-data Example = Eg [Arg] ClosedTerm
+data Example = Eg
+  { ins :: [Arg]
+  , out :: ClosedTerm }
   deriving Show
 
 data SynthState = SynthState
@@ -180,10 +193,7 @@ synth name argTypes ret = do
   egs <- asks examples
   fns <- asks fns
 
-  debug $ "* synthesising " ++ name ++ " : " ++ intercalate " -> " (map show argTypes) ++ " -> " ++ show ret ++ " (with " ++ show (map fst fns) ++ ")"
-
-  forM_ egs $ \(Eg ins out) ->
-    debug $ "  { " ++ intercalate ", " (map show ins) ++ " -> " ++ show out ++ " }"
+  debug $ "* synthesising " ++ name ++ " : " ++ intercalate " -> " (map show argTypes) ++ " -> " ++ show ret ++ " with fns: " ++ unwords (map fst fns)
 
   -- TODO: so, generating holes is really useful obviously, but it has a few
   -- issues. most notably, it often leads to less efficient solutions because
@@ -200,24 +210,26 @@ synth name argTypes ret = do
   guard $ not (null egs)
 
   if d < dMax then do
-    args <- forM argTypes $ \t -> do
+    fnArgs <- forM argTypes $ \t -> do
       name <- fresh
       return (name, t)
 
     f <- local (\c -> c { depth = d + 1 }) $ do
       egs' <- updateExamplesFully egs
 
-      debug $ "egs':"
       forM_ egs' $ \(Eg ins out) ->
         debug $ "  { " ++ intercalate ", " (map show ins) ++ " -> " ++ show out ++ " }"
+      
+      withExamples egs' $ try
+          [ --synthNoEgs args ret name
+            synthUnify fnArgs ret name
+          , synthTrivial fnArgs ret name
+          , synthRecurse fnArgs ret name
+          , synthCommonConstr fnArgs ret name
+          , synthSplit fnArgs ret name ]
 
-      try [ --synthNoEgs args ret name
-            synthTrivial args ret name
-          , synthRecurse args ret name
-          , synthCommonConstr args ret name
-          , synthSplit args ret name ]
-
-    defineFunction name f
+    emitFunction name f
+    debug $ "synthesis complete for " ++ name ++ " " ++ unwords (map fst (args f)) ++ ": " ++ show (body f)
 
     return f
   else do
@@ -291,20 +303,21 @@ synthCommonConstr args retType fnName = do
 
       -- actually synthesise the sub-functions
       withFunction fnName fn $
-        forM_ (zip3 names conArgTys conEgs) $ \(fnName, conArgTy, egs) ->
-          withExamples egs $ synth fnName argTypes conArgTy
+        traverseContinuation (zip3 names conArgTys conEgs) $ \(fnName', conArgTy, egs) c -> do
+          f <- withExamples egs $ synth fnName' argTypes conArgTy
+          withFunction fnName' f c
 
       debug "done: common constr"
       return fn
 
-synthSplit :: [(Ident, Type)] -> Type -> Ident -> Synth SynthFunction
+synthSplit :: SynthImpl
 synthSplit args retType name = do
   debug ": trying case split"
 
   try [ synthSplitOn i args retType name
       | i <- [0..length args - 1] ]
 
-synthSplitOn :: Int -> [(Ident, Type)] -> Type -> Ident -> Synth SynthFunction
+synthSplitOn :: Int -> SynthImpl
 synthSplitOn splitOn args retType fnName = do
   debug $ "- trying split on arg " ++ show splitOn
   egs <- asks examples
@@ -346,7 +359,7 @@ synthSplitOn splitOn args retType fnName = do
                     , ret = retType
                     , body = body
                     , egs = egs }
-        
+
         withFunction fnName fn $ traverseContinuation cases $ \(con, conArgs, caseFn, allArgs) c -> do
           let examples =
                      [ Eg (ins ++ map Val conArgs') out
@@ -356,24 +369,23 @@ synthSplitOn splitOn args retType fnName = do
 
           fn <- withExamples examples $ synth caseFn (map snd allArgs) retType
           withFunction caseFn fn c
-        
+
         debug $ "done: split on arg " ++ show splitOn
-        
+
         return fn
 
       Nothing -> fail "non-datatype or undefined"
     _ -> fail "can't split on non-ADT"
 
-synthRecurse :: [(Ident, Type)] -> Type -> Ident -> Synth SynthFunction
+synthRecurse :: SynthImpl
 synthRecurse args retType name = do
-  debug ": trying case split"
+  debug ": trying recursion split"
 
   try [ synthRecurseOn i args retType name
       | i <- [0..length args - 1] ]
 
-synthRecurseOn :: Int -> [(Ident, Type)] -> Type -> Ident -> Synth SynthFunction
+synthRecurseOn :: Int -> SynthImpl
 synthRecurseOn splitOn args retType fnName = do
-  debug $ "- trying recurse on arg " ++ show splitOn ++ "; fnName = " ++ fnName
   egs <- asks examples
   dts <- asks dataTypes
 
@@ -430,6 +442,8 @@ synthRecurseOn splitOn args retType fnName = do
                     , ret = retType
                     , body = body
                     , egs = egs }
+        
+        debug $ "recursive body = " ++ show body
 
         -- with this function (the recursive one being defined - "fnName") temporarily added
         -- to the namespace, we synthesise each case in turn.
@@ -468,23 +482,84 @@ synthRecurseOn splitOn args retType fnName = do
       Nothing -> fail "non-datatype or undefined"
     _nonADT -> fail "can't recurse on non-ADT"
 
-traverseContinuation :: Monad m => [a] -> (a -> m [b] -> m [b]) -> m [b]
-traverseContinuation xs f = foldr f (return []) xs
-
 chooseRecursiveArg :: Type -> [(Ident, Type)] -> Maybe Ident
 chooseRecursiveArg t consArgs = fst <$> find (\(_, t') -> t == t') consArgs
 
+synthUnify :: SynthImpl
+synthUnify args retType fnName = do
+  debug ": trying synth unify"
+
+  try [ synthUnifyOn i args retType fnName
+      | i <- [0..length args - 1] ]
+
+synthUnifyOn :: Int -> SynthImpl
+synthUnifyOn i args retType fnName = do
+  egs <- asks examples
+
+  let insAt_i = transpose (map ins egs) !! i
+      outs = map out egs
+  
+  debug $ " - trying unify on " ++ show i ++ "; insAt_i = " ++ show insAt_i ++ "; outs = " ++ show outs
+
+  case concat <$> zipWithM (unifyArg fnName) outs insAt_i of
+    Just unifyEgs -> do
+      debug $ " - can unify: " ++ show unifyEgs
+      -- unifyEgs at this point is the set of examples we should add.
+      -- we also need to update the existing examples, replacing the thunks with
+      -- their proper values.
+      let egs' = [ updateThunkCall fnName o' eg
+                 | (eg, Eg _ o') <- zip egs unifyEgs ]
+                 ++ unifyEgs -- ?
+      
+      withExamples egs' $ synth fnName (map snd args) retType
+    Nothing -> fail "couldn't unify"
+
+-- e.g. <2 :: (2 :: h [2] 2 [] [])> unifies with 2 :: (2 :: []),
+-- providing the example: h [2] 2 [] [] => [].
+--
+-- FOR NOW, we assume that there is only one instance of each
+-- function, although if functions are allowed to be reused in the
+-- future then this would break.
+-- TODO: improve this
+--
+-- returns Just [egs...] if the given egs would unify the thunk 
+-- with the term, and Nothing if the two are inconsolable.
+-- 
+-- it will only unify thunk function calls of the fnName provided.
+-- e.g. in the example above, fnName would have to be "h".
+unifyThunk :: Ident -> ClosedTerm -> Thunk -> Maybe [Example]
+unifyThunk fnName (ConstrApp con' conArgs') (ThunkConstr con conArgs)
+  | con == con' = do
+      egs <- zipWithM (unifyThunk fnName) conArgs' conArgs
+      return $ concat egs
+unifyThunk fnName t (ThunkCall f fArgs)
+  | fnName == f = Just [Eg (map Val fArgs) t]
+unifyThunk fnName t (ThunkTerm t')
+  | t == t' = Just []
+unifyThunk _ _ _ = Nothing
+
+unifyArg :: Ident -> ClosedTerm -> Arg -> Maybe [Example]
+unifyArg i t (Thunk th deps) = unifyThunk i t th
+unifyArg i _ _ = Nothing -- TODO: should this be Just [] ?
+
+updateThunkCall :: Ident -> ClosedTerm -> Example -> Example
+updateThunkCall i t (Eg ins out) = Eg (map goArg ins) out
+  where goArg (Thunk th deps) = Thunk (replaceThunkCall i t th) (deps \\\ [i])
+        goArg (Val v) = Val v
+      
+replaceThunkCall :: Ident -> ClosedTerm -> Thunk -> Thunk
+replaceThunkCall f t (ThunkConstr con ths) = ThunkConstr con (map (replaceThunkCall f t) ths)
+replaceThunkCall f t (ThunkCall f' args)
+  | f == f' = ThunkTerm t
+  | otherwise = ThunkCall f' args
+replaceThunkCall f t (ThunkRecLet th deps fn fnArgs) = error "replaceThunkCall not implemented for ThunkRecLet"
+replaceThunkCall f t (ThunkTerm t') = ThunkTerm t'
+
 debug :: String -> Synth ()
---debug _ = return ()
 debug s = do
   d <- asks depth
   let prefix = concat (replicate d "* ")
   traceM $ prefix ++ s
-
-replace :: Int -> a -> [a] -> [a]
-replace 0 x (y:ys) = x:ys
-replace n x (y:ys) = y : replace (n-1) x ys
-replace _ _ [] = undefined
 
 hasVal :: Arg -> ClosedTerm -> Bool
 hasVal (Val v) t = v == t
@@ -492,7 +567,7 @@ hasVal (Thunk _ _) t = False
 
 fromVal :: Arg -> ClosedTerm
 fromVal (Val v) = v
-fromVal _ = undefined
+fromVal _ = error "fromVal on non-val (i.e. thunk) argument"
 
 isThunk :: Arg -> Bool
 isThunk (Val _) = False
@@ -520,11 +595,11 @@ withSynth name args ret s = do
 -- further functions.
 -- use withFunction if it's required that this function can be
 -- used later on in another function.
-defineFunction :: Ident -> SynthFunction -> Synth ()
-defineFunction name fn = tell [(name, fn)]
+emitFunction :: Ident -> SynthFunction -> Synth ()
+emitFunction name fn = tell [(name, fn)]
 
 -- like defineFunction, but also exposes the function to a further
--- synthesis problem to be (potentially) called in its definition.
+-- synthesis problem to be (potentially) called in its d1efinition.
 -- essentially "wraps" a synthesiser in some extra context.
 withFunction :: Ident -> SynthFunction -> Synth a -> Synth a
 withFunction name f s = do
@@ -636,23 +711,8 @@ updateExamples egs = do
       insT = transpose ins
       has = map fst fns
 
-  debug $ "updating examples, with fns: " ++ unwords has
-
-  -- r <- forM insT $ \case
-  --   c@(Thunk t fs:xs) -> do
-  --     debug $ " - thunk " ++ show t ++ " depends on " ++ unwords fs ++ " and we have " ++ show (map fst fns)
-  --     let shouldUpdate = canUpdate fs has
-  --     debug $ "   (can update: " ++ show (canUpdate fs has) ++ ")"
-  --     if shouldUpdate then do
-  --       new <- updateThunks c
-  --       debug $ "   (new thunks = " ++ show new ++ ")"
-  --       return (new, True)
-  --     else
-  --       return (c, False)
-  --   c -> return (c, False)
   r <- forM insT $ \c -> if canUpdateAny c has then do
       new <- updateThunks c
-      debug $ "   (updated; new thunks = " ++ show new ++ ")"
       return (new, True)
     else
       return (c, False)
@@ -660,7 +720,6 @@ updateExamples egs = do
   let (ins'T, didUpdate) = unzip r
 
   let ins' = transpose ins'T
-  debug $ "ins' = " ++ show ins
 
   return ([ Eg i ret | (i, ret) <- zip ins' rets ], or didUpdate)
 
@@ -955,6 +1014,9 @@ deleteKV k ((k', v'):xs)
 xs \\\ [] = xs
 xs \\\ (y:ys) = [ x | x <- xs, x /= y ] \\\ ys
 
+traverseContinuation :: Monad m => [a] -> (a -> m [b] -> m [b]) -> m [b]
+traverseContinuation xs f = foldr f (return []) xs
+
 test'' env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
   [ Eg [toVal' ([1, 2] :: [Int])] (toClosed' (1 :: Int))
   , Eg [toVal' ([0, 2, 3] :: [Int])] (toClosed' (0 :: Int)) ]
@@ -970,5 +1032,5 @@ test env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
 
 testStutter env = synthesiseInEnvironment env "stutter" (tyList tyInt --> tyList tyInt)
   [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))
-  , Eg [toVal' ([1] :: [Int])] (toClosed' ([1, 1] :: [Int]))
+  --, Eg [toVal' ([1] :: [Int])] (toClosed' ([1, 1] :: [Int]))
   , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1, 1, 2, 2] :: [Int])) ]

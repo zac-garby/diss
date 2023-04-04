@@ -41,6 +41,7 @@ prettyExpr (Hole i) = show i ++ "?"
 bracketExpr :: Expr -> String
 bracketExpr ex@(App f x) = "(" ++ prettyExpr ex ++ ")"
 bracketExpr ex@(TypeSpec e t) = "(" ++ prettyExpr ex ++ ")"
+bracketExpr ex@(Case cond cases) = "(" ++ prettyExpr ex ++ ")"
 bracketExpr ex = prettyExpr ex
 
 prettyClosedTerm :: ClosedTerm -> String
