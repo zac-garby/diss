@@ -62,6 +62,9 @@ data Body
   -- recurseArg [(constrName, [conArgs...], recursivePart, bodyName, [bodyArgs...])]
   | SynthRecurse Ident [(Ident, [Ident], RecursivePart, Ident, [Ident])]
 
+  -- fnName [fnArgs...]
+  | SynthCall Ident [Ident]
+
   -- a hole
   | SynthHole
   deriving Show
@@ -166,8 +169,8 @@ synthesise env dts fnName goal egs = do
         , dataTypes = dts }
         defaultState = SynthState {
           newNames = allVars
-        , maxDepth = 8 }
-        problem = uncurry (synth fnName) (unfoldFnTy goal)
+        , maxDepth = 0 }
+        problem = uncurry (upToDepth 16 ... synth fnName) (unfoldFnTy goal)
 
 runSynth :: SynthState -> Context -> Synth a -> [(a, SynthFunctions)]
 runSynth s c p = do
@@ -509,8 +512,15 @@ synthUnifyOn i args retType fnName = do
       let egs' = [ updateThunkCall fnName o' eg
                  | (eg, Eg _ o') <- zip egs unifyEgs ]
                  ++ unifyEgs -- ?
+      
+      fnName' <- fresh
 
-      withExamples egs' $ synth fnName (map snd args) retType
+      let fn = Fn { args = args
+                  , ret = retType
+                  , body = SynthCall fnName' (map fst args)
+                  , egs = egs }
+
+      withExamples egs' $ synth fnName' (map snd args) retType
     Nothing -> fail "couldn't unify"
 
 -- e.g. <2 :: (2 :: h [2] 2 [] [])> unifies with 2 :: (2 :: []),
@@ -631,6 +641,8 @@ assembleBody (SynthRecurse x cases) =
        [ (con, conArgs, b)
        | (con, conArgs, rp, fn, fnArgs) <- cases
        , let b = assembleRecursiveBody rp (applyManyIdents (fn : fnArgs)) ]
+assembleBody (SynthCall f args) =
+  applyMany $ map Var (f : args)
 assembleBody SynthHole = Hole 0
 
 assembleRecursiveBody :: RecursivePart -> Expr -> Expr
@@ -734,6 +746,9 @@ updateExamples egs = do
           return (Thunk t' fs' : rest)
         updateThunks updatable (x:xs) = (x:) <$> updateThunks updatable xs
 
+-- applies a function body with named arguments (names provided) to some
+-- arguments, also provided. returns a set of function names which the
+-- thunk is now dependent upon.
 applyBody :: [Ident] -> Body -> [ClosedTerm] -> (Thunk, [Ident])
 applyBody params body args = case body of
     SynthVar x ->
@@ -766,6 +781,9 @@ applyBody params body args = case body of
         NoRecurse ->
           let fnArgVals = map (getIn allArgs) fnArgs
           in (ThunkCall fnName fnArgVals, [fnName])
+      
+    SynthCall f args ->
+      (ThunkCall f (map get args), [f])
 
     SynthHole -> undefined
   where getIn as x = case lookup x as of
