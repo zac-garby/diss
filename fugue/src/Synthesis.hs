@@ -18,10 +18,6 @@ module Synthesis
 
   , test
   , testStutter
-  , Thunk (..)
-  , Body (..)
-  , applyBody
-  , unifyThunk
   ) where
 
 import Data.Maybe
@@ -38,6 +34,7 @@ import Types
 import Env ( fromEnvironment, Environment(types) )
 import Infer
 import Text.Read
+import Control.Applicative
 
 data Context = Context
   { examples :: [Example]
@@ -90,8 +87,11 @@ instance Show Thunk where
   show (ThunkConstr "Suc" [t]) = case readMaybe (show t) :: Maybe Int of
     Just n -> show (1 + n)
     Nothing -> "(Suc " ++ show t ++ ")"
+  show (ThunkConstr "Nil" []) = "[]"
+  show (ThunkConstr "Cons" [l, r]) = "(" ++ show l ++ " :: " ++ show r ++ ")"
   show (ThunkConstr con []) = con
   show (ThunkConstr con ts) = "(" ++ con ++ " " ++ unwords (map show ts) ++ ")"
+
   show (ThunkCall f ts) = "(" ++ f ++ " " ++ unwords (map show ts) ++ ")"
   show (ThunkTerm t) = show t
   show (ThunkRecLet th deps callFn callArgs) =
@@ -134,7 +134,7 @@ data SynthState = SynthState
   , maxDepth :: Int }
   deriving Show
 
-type Synth = RWST Context SynthFunctions SynthState Maybe
+type Synth = RWST Context SynthFunctions SynthState []
 
 type SynthImpl = [(Ident, Type)] -> Type -> Ident -> Synth SynthFunction
 
@@ -143,7 +143,7 @@ synthesiseInEnvironment ::
   -> Ident
   -> Type
   -> [Example]
-  -> Maybe (Ident, Function, Functions)
+  -> [(Ident, Function, Functions)]
 synthesiseInEnvironment e = synthesise (fromEnvironment e) (types e)
 
 synthesise ::
@@ -152,13 +152,12 @@ synthesise ::
   -> Ident
   -> Type
   -> [Example]
-  -> Maybe (Ident, Function, Functions)
-synthesise env dts fnName goal egs = case runSynth defaultState ctx problem of
-  Nothing -> Nothing
-  Just (fn, fns) ->
-    let fn' = assembleFn fn
-        fns' = removeRedundant fnName (unwindFrom fnName fns)
-    in Just (fnName, fn', fns')
+  -> [(Ident, Function, Functions)]
+synthesise env dts fnName goal egs = do
+  (fn, fns) <- runSynth defaultState ctx problem
+  let fn' = assembleFn fn
+      fns' = removeRedundant fnName (unwindFrom fnName fns)
+  return (fnName, fn', fns')
   where ctx = Context {
           examples = egs
         , depth = 0
@@ -167,13 +166,13 @@ synthesise env dts fnName goal egs = case runSynth defaultState ctx problem of
         , dataTypes = dts }
         defaultState = SynthState {
           newNames = allVars
-        , maxDepth = 0 }
-        problem = uncurry (upToDepth 8 ... synth fnName) (unfoldFnTy goal)
+        , maxDepth = 8 }
+        problem = uncurry (synth fnName) (unfoldFnTy goal)
 
-runSynth :: SynthState -> Context -> Synth a -> Maybe (a, SynthFunctions)
-runSynth s c p = case runRWST p c s of
-  Nothing -> Nothing
-  Just (a, _, fns) -> Just (a, fns)
+runSynth :: SynthState -> Context -> Synth a -> [(a, SynthFunctions)]
+runSynth s c p = do
+  (a, _, fns) <- runRWST p c s
+  return (a, fns)
 
 upToDepth :: Int -> Synth a -> Synth a
 upToDepth toDepth f = do
@@ -229,7 +228,7 @@ synth name argTypes ret = do
           , synthSplit fnArgs ret name ]
 
     emitFunction name f
-    debug $ "synthesis complete for " ++ name ++ " " ++ unwords (map fst (args f)) ++ ": " ++ show (body f)
+    debug $ "synthesis complete for " ++ name ++ " " ++ unwords (map fst (args f))
 
     return f
   else do
@@ -556,6 +555,7 @@ replaceThunkCall f t (ThunkRecLet th deps fn fnArgs) = error "replaceThunkCall n
 replaceThunkCall f t (ThunkTerm t') = ThunkTerm t'
 
 debug :: String -> Synth ()
+debug _ = return ()
 debug s = do
   d <- asks depth
   let prefix = concat (replicate d "* ")
@@ -612,11 +612,9 @@ withFunctionInEnv name f e =
       { env = insertKV name (getType f, Local) (env c)
       , fns = (name, f) : fns c })
 
-try :: Monoid w => [RWST r w s Maybe a] -> RWST r w s Maybe a
+try :: (MonadFail m, Alternative m, Monoid w) => [RWST r w s m a] -> RWST r w s m a
 try [] = fail "exhausted all possibilities"
-try (x:xs) = rwsT $ \r s -> case runRWST x r s of
-  Nothing -> runRWST (try xs) r s
-  Just (a, s', w') -> Just (a, s', w')
+try (x:xs) = rwsT $ \r s -> runRWST x r s <|> runRWST (try xs) r s
 
 assembleBody :: Body -> Expr
 assembleBody (SynthVar x) = Var x

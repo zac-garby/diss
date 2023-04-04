@@ -148,14 +148,14 @@ loadFile file = do
   
   env <- get
   case testStutter env of
-    Just (i, fn, fns) -> do
-      liftIO $ putStrLn $ "synthesised " ++ show (length fns) ++ " functions:"
-      liftIO $ forM_ fns $ \(name, Function args ret body _) -> do
-        putStrLn $ name ++ " " ++ unwords (map fst args) ++ " := " ++ prettyExpr body
+    [] -> liftIO $ putStrLn "synthesis failed! :o"
+    xs -> forM_ (zip [1..5] xs) $ \(num, (i, fn, fns)) -> liftIO $ do
+      putStrLn $ "synthesis no. " ++ show num ++ ":"
+      putStrLn $ "synthesised " ++ show (length fns) ++ " functions:"
+      putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
       --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
-      liftIO $ putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
-      --liftIO $ putStrLn $ "compiled = " ++ show term
-    Nothing -> liftIO $ putStrLn "synthesis failed! :o"
+      --putStrLn $ "compiled = " ++ show term
+
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
