@@ -723,11 +723,13 @@ updateExamples egs = do
   return ([ Eg i ret | (i, ret) <- zip ins' rets ], or didUpdate)
 
   where canUpdateAny [] _ = []
+        canUpdateAny (Thunk t []:xs) has = "*finalise thunk*" : canUpdateAny xs has
         canUpdateAny (Thunk t fs:xs) has = fs `intersect` has ++ canUpdateAny xs has
         canUpdateAny (_:xs) has = canUpdateAny xs has
 
         updateThunks :: [Ident] -> [Arg] -> Synth [Arg]
         updateThunks updatable [] = return []
+        updateThunks updatable (Thunk t []:xs) = (Val (thunkToTerm' t) :) <$> updateThunks updatable xs
         updateThunks updatable (Thunk t fs:xs) = do
           (t', fs') <- updateThunk t (fs `intersect` updatable)
           rest <- updateThunks updatable xs
