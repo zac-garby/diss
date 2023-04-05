@@ -6,6 +6,7 @@ module Synthesis
   , Functions (..)
   , SynthFunction (..)
   , SynthFunctions (..)
+  , SynthResult (..)
   , Arg (..)
   , Example (..)
   , SynthState (..)
@@ -137,6 +138,11 @@ data SynthState = SynthState
   , maxDepth :: Int }
   deriving Show
 
+data SynthResult = SynthResult
+  { root :: Ident
+  , functions :: Functions
+  , depthUsed :: Int }
+
 type Synth = RWST Context SynthFunctions SynthState []
 
 type SynthImpl = [(Ident, Type)] -> Type -> Ident -> Synth SynthFunction
@@ -146,7 +152,7 @@ synthesiseInEnvironment ::
   -> Ident
   -> Type
   -> [Example]
-  -> [(Ident, Function, Functions)]
+  -> [SynthResult]
 synthesiseInEnvironment e = synthesise (fromEnvironment e) (types e)
 
 synthesise ::
@@ -155,27 +161,17 @@ synthesise ::
   -> Ident
   -> Type
   -> [Example]
-  -> [(Ident, Function, Functions)]
+  -> [SynthResult]
 synthesise env dts fnName goal egs = do
-  (fn, fns) <- runSynth defaultState ctx problem
-  let fn' = assembleFn fn
-      fns' = removeRedundant fnName (unwindFrom fnName fns)
-  return (fnName, fn', fns')
-  where ctx = Context {
-          examples = egs
-        , depth = 0
-        , env = env
-        , fns = []
-        , dataTypes = dts }
-        defaultState = SynthState {
-          newNames = allVars
-        , maxDepth = 0 }
+  (fn, st, fns) <- runSynth defaultState ctx problem
+  let fns' = removeRedundant fnName (unwindFrom fnName fns)
+  return $ SynthResult fnName fns' (maxDepth st)
+  where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts }
+        defaultState = SynthState { newNames = allVars, maxDepth = 0 }
         problem = uncurry (upToDepth 16 ... synth fnName) (unfoldFnTy goal)
 
-runSynth :: SynthState -> Context -> Synth a -> [(a, SynthFunctions)]
-runSynth s c p = do
-  (a, _, fns) <- runRWST p c s
-  return (a, fns)
+runSynth :: SynthState -> Context -> Synth a -> [(a, SynthState, SynthFunctions)]
+runSynth s c p = runRWST p c s
 
 upToDepth :: Int -> Synth a -> Synth a
 upToDepth toDepth f = do
@@ -195,7 +191,7 @@ synth name argTypes ret = do
   egs <- asks examples
   fns <- asks fns
 
-  debug $ "* synthesising " ++ name ++ " : " ++ intercalate " -> " (map show argTypes) ++ " -> " ++ show ret ++ " with fns: " ++ unwords (map fst fns)
+  debug $ "* synthesising " ++ name ++ " : " ++ intercalate " -> " (map show argTypes) ++ " -> " ++ show ret ++ " with fns: " ++ unwords (map fst fns) ++ " and " ++ show (length egs) ++ " examples:"
 
   -- TODO: so, generating holes is really useful obviously, but it has a few
   -- issues. most notably, it often leads to less efficient solutions because
@@ -209,7 +205,6 @@ synth name argTypes ret = do
   --       depth iterations, and if nothing is found in n iterations the hole
   --       solution is accepted.
   --  * disallow holes / make them a user option
-  guard $ not (null egs)
 
   if d < dMax then do
     fnArgs <- forM argTypes $ \t -> do
@@ -223,15 +218,14 @@ synth name argTypes ret = do
         debug $ "  { " ++ intercalate ", " (map show ins) ++ " -> " ++ show out ++ " }"
 
       withExamples egs' $ try
-          [ --synthNoEgs args ret name
-            synthUnify fnArgs ret name
+          [ synthNoEgs fnArgs ret name
+          , synthUnify fnArgs ret name
           , synthTrivial fnArgs ret name
-          , synthRecurse fnArgs ret name
           , synthCommonConstr fnArgs ret name
-          , synthSplit fnArgs ret name ]
+          , synthSplit fnArgs ret name
+          , synthRecurse fnArgs ret name ]
 
     emitFunction name f
-    debug $ "synthesis complete for " ++ name ++ " " ++ unwords (map fst (args f))
 
     return f
   else do
@@ -258,6 +252,7 @@ synthTrivial args retType _ = do
   debug ": trying synth trivial"
 
   egs <- asks examples
+  guard $ not (null egs)
 
   go egs 0
   where go egs n
@@ -280,6 +275,7 @@ synthCommonConstr args retType fnName = do
   debug ": trying common constr"
 
   egs <- asks examples
+  guard $ not (null egs)
 
   case sharedConstr egs of
     Nothing -> fail "the constructor is not shared"
@@ -315,6 +311,9 @@ synthCommonConstr args retType fnName = do
 synthSplit :: SynthImpl
 synthSplit args retType name = do
   debug ": trying case split"
+
+  egs <- asks examples
+  guard $ not (null egs)
 
   try [ synthSplitOn i args retType name
       | i <- [0..length args - 1] ]
@@ -382,6 +381,9 @@ synthSplitOn splitOn args retType fnName = do
 synthRecurse :: SynthImpl
 synthRecurse args retType name = do
   debug ": trying recursion split"
+
+  egs <- asks examples
+  guard $ not (null egs)
 
   try [ synthRecurseOn i args retType name
       | i <- [0..length args - 1] ]
@@ -470,9 +472,9 @@ synthRecurseOn splitOn args retType fnName = do
 
               NoRecurse -> do
                 let examples = [ Eg (ins ++ map Val conArgs) out
-                                | Eg ins out <- egs
-                                , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
-                                , con == con' ]
+                               | Eg ins out <- egs
+                               , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
+                               , con == con' ]
 
                 withExamples examples $ synth caseFnName (map snd allArgs) retType
 
@@ -491,12 +493,17 @@ synthUnify :: SynthImpl
 synthUnify args retType fnName = do
   debug ": trying synth unify"
 
+  egs <- asks examples
+  guard $ not (null egs)
+
   try [ synthUnifyOn i args retType fnName
       | i <- [0..length args - 1] ]
 
 synthUnifyOn :: Int -> SynthImpl
 synthUnifyOn i args retType fnName = do
   egs <- asks examples
+
+  debug $ " - synthUnifyOn " ++ show i ++ "; egsT = " ++ show (transpose (map ins egs))
 
   let insAt_i = transpose (map ins egs) !! i
       outs = map out egs
@@ -512,7 +519,7 @@ synthUnifyOn i args retType fnName = do
       let egs' = [ updateThunkCall fnName o' eg
                  | (eg, Eg _ o') <- zip egs unifyEgs ]
                  ++ unifyEgs -- ?
-      
+
       fnName' <- fresh
 
       let fn = Fn { args = args
@@ -588,11 +595,11 @@ insToVals (Eg ins _) = map fromVal ins
 
 argIsThunk :: Int -> [Example] -> Bool
 argIsThunk n [] = False
-argIsThunk n ((Eg args _):_) = isThunk (args !! n)
+argIsThunk n ((Eg args _):rest) = isThunk (args !! n) || argIsThunk n rest
 
 egHasThunk :: [Example] -> Bool
 egHasThunk [] = False
-egHasThunk ((Eg args _):_) = any isThunk args
+egHasThunk ((Eg args _):rest) = any isThunk args || egHasThunk rest
 
 withSynth :: Ident -> [Type] -> Type -> Synth a -> Synth a
 withSynth name args ret s = do
@@ -698,6 +705,9 @@ lookupFn x = do
   fns <- asks fns
   return $ lookup x fns
 
+lookupFn' :: Ident -> Synth SynthFunction
+lookupFn' x = fromJust <$> lookupFn x
+
 withExamples :: [Example] -> Synth a -> Synth a
 withExamples egs = local (\l -> l { examples = egs })
 
@@ -721,7 +731,10 @@ updateExamples egs = do
       insT = transpose ins
       has = map fst fns
 
-  r <- forM insT $ \c -> case canUpdateAny c has of
+  r <- forM insT $ \c -> do
+    let updatable = canUpdateAny c has
+    notHoles <- filterM (fmap isHole . lookupFn') updatable
+    case notHoles of
       [] -> return (c, False)
       updatable -> do
         new <- updateThunks updatable c
@@ -745,6 +758,10 @@ updateExamples egs = do
           rest <- updateThunks updatable xs
           return (Thunk t' fs' : rest)
         updateThunks updatable (x:xs) = (x:) <$> updateThunks updatable xs
+
+        isHole :: SynthFunction -> Bool
+        isHole Fn{ body = SynthHole } = True
+        isHole _ = False
 
 -- applies a function body with named arguments (names provided) to some
 -- arguments, also provided. returns a set of function names which the
@@ -781,11 +798,11 @@ applyBody params body args = case body of
         NoRecurse ->
           let fnArgVals = map (getIn allArgs) fnArgs
           in (ThunkCall fnName fnArgVals, [fnName])
-      
+
     SynthCall f args ->
       (ThunkCall f (map get args), [f])
 
-    SynthHole -> undefined
+    SynthHole -> error "attempted to apply a function which is undefined (i.e. a hole)"
   where getIn as x = case lookup x as of
           Just v -> v
           Nothing -> error $ "getIn: couldn't find " ++ x ++ " in " ++ show (map fst as)
@@ -799,8 +816,9 @@ updateThunkWith fnName fn@(Fn args _ body _) th = case th of
     in (ThunkConstr s thunks, nub $ concat deps)
 
   ThunkCall callFn callArgs ->
-    if callFn == fnName then
-      applyBody (map fst args) body callArgs
+    if callFn == fnName then case body of
+      SynthHole -> (th, [callFn])
+      body -> applyBody (map fst args) body callArgs
     else
       (th, [callFn])
 
@@ -1031,15 +1049,15 @@ xs \\\ (y:ys) = [ x | x <- xs, x /= y ] \\\ ys
 traverseContinuation :: Monad m => [a] -> (a -> m [b] -> m [b]) -> m [b]
 traverseContinuation xs f = foldr f (return []) xs
 
-test'' env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
+test env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
   [ Eg [toVal' ([1, 2] :: [Int])] (toClosed' (1 :: Int))
   , Eg [toVal' ([0, 2, 3] :: [Int])] (toClosed' (0 :: Int)) ]
 
-test' env = synthesiseInEnvironment env "double" (tyInt --> tyList tyInt --> tyList tyInt)
+test'' env = synthesiseInEnvironment env "double" (tyInt --> tyList tyInt --> tyList tyInt)
   [ Eg [toVal' (0 :: Int), toVal' ([1] :: [Int])] (toClosed' ([0, 0, 1] :: [Int]))
   , Eg [toVal' (2 :: Int), toVal' ([] :: [Int])] (toClosed' ([2, 2] :: [Int])) ]
 
-test env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
+test' env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
   [ Eg [toVal' (0 :: Int)] (toClosed' False)
   , Eg [toVal' (1 :: Int)] (toClosed' True)
   , Eg [toVal' (2 :: Int)] (toClosed' False) ]
