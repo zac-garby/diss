@@ -36,7 +36,7 @@ prettyExpr (LitList xs) = "[" ++ intercalate ", " (map prettyExpr xs) ++ "]"
 prettyExpr (LitTuple xs) = "(" ++ intercalate ", " (map prettyExpr xs) ++ ")"
 prettyExpr (LitChar c) = show c
 prettyExpr (TypeSpec e ty) = bracketExpr e ++ " : " ++ prettyType ty
-prettyExpr (Hole i) = show i ++ "?"
+prettyExpr (Hole i) = "?"
 
 bracketExpr :: Expr -> String
 bracketExpr ex@(App f x) = "(" ++ prettyExpr ex ++ ")"
@@ -105,9 +105,9 @@ prettyTypes env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (ppr
 
 prettyFunction :: Ident -> Function -> String
 prettyFunction name (Function args ret body egs) =
-  name ++ " : " ++ intercalate " -> " (map prettyType (map snd args ++ [ret])) ++ "\n" ++
-  "  { " ++ intercalate "\n  ; " (map prettyExample egs) ++ " }\n" ++
-  name ++ " " ++ unwords (map fst args) ++ " = " ++ prettyExpr body
+  name ++ " : " ++ intercalate " -> " (map prettyType (map snd args ++ [ret])) ++ "\n"
+    -- ++ "  { " ++ intercalate "\n  ; " (map prettyExample egs) ++ " }\n" ++
+    ++ name ++ " " ++ unwords (map fst args) ++ " = " ++ prettyExpr body
 
 prettyExample :: Example -> String
 prettyExample (Eg args ret) = intercalate ", " (map prettyEgArg args) ++ " => " ++ show ret
