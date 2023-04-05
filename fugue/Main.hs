@@ -147,15 +147,17 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  case testStutter env of
-    [] -> liftIO $ putStrLn "synthesis failed! :o"
-    xs -> forM_ (zip [1..5] xs) $ \(num, (i, fn, fns)) -> liftIO $ do
-      putStrLn $ "synthesis no. " ++ show num ++ ":"
-      putStrLn $ "synthesised " ++ show (length fns) ++ " functions:"
-      putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
-      --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
-      --putStrLn $ "compiled = " ++ show term
-
+  case test env of
+    [] -> liftIO $ putStrLn "synthesis failed! :("
+    xs -> do
+      --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"
+      forM_ (zip [1..5] xs) $ \(num, SynthResult i fns d) -> liftIO $ do
+        putStrLn $ "attempt #" ++ show num ++ ":"
+        putStrLn $ "synthesised " ++ show (length fns) ++ " function(s), depth: " ++ show d
+        putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
+        --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
+        --putStrLn $ "compiled = " ++ show term
+        putStrLn ""
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
