@@ -147,9 +147,19 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
+  case test env of
+    [] -> liftIO $ putStrLn "synthesis failed! :o"
+    xs -> forM_ (zip [1..3] xs) $ \(num, (i, fn, fns)) -> liftIO $ do
+      putStrLn $ "synthesis no. " ++ show num ++ ":"
+      putStrLn $ "synthesised " ++ show (length fns) ++ " functions:"
+      putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
+      --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
+      --putStrLn $ "compiled = " ++ show term
+  
+  liftIO $ putStrLn "#####testing stutter:######"
   case testStutter env of
     [] -> liftIO $ putStrLn "synthesis failed! :o"
-    xs -> forM_ (zip [1..5] xs) $ \(num, (i, fn, fns)) -> liftIO $ do
+    xs -> forM_ (zip [1..3] xs) $ \(num, (i, fn, fns)) -> liftIO $ do
       putStrLn $ "synthesis no. " ++ show num ++ ":"
       putStrLn $ "synthesised " ++ show (length fns) ++ " functions:"
       putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)

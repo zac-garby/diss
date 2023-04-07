@@ -209,7 +209,7 @@ synth name argTypes ret = do
   --       depth iterations, and if nothing is found in n iterations the hole
   --       solution is accepted.
   --  * disallow holes / make them a user option
-  guard $ not (null egs)
+  -- guard $ not (null egs)
 
   if d < dMax then do
     fnArgs <- forM argTypes $ \t -> do
@@ -223,8 +223,8 @@ synth name argTypes ret = do
         debug $ "  { " ++ intercalate ", " (map show ins) ++ " -> " ++ show out ++ " }"
 
       withExamples egs' $ try
-          [ --synthNoEgs args ret name
-            synthUnify fnArgs ret name
+          [ synthNoEgs fnArgs ret name
+          , synthUnify fnArgs ret name
           , synthTrivial fnArgs ret name
           , synthRecurse fnArgs ret name
           , synthCommonConstr fnArgs ret name
@@ -258,6 +258,7 @@ synthTrivial args retType _ = do
   debug ": trying synth trivial"
 
   egs <- asks examples
+  guard $ not (null egs)
 
   go egs 0
   where go egs n
@@ -280,6 +281,7 @@ synthCommonConstr args retType fnName = do
   debug ": trying common constr"
 
   egs <- asks examples
+  guard $ not (null egs)
 
   case sharedConstr egs of
     Nothing -> fail "the constructor is not shared"
@@ -315,6 +317,9 @@ synthCommonConstr args retType fnName = do
 synthSplit :: SynthImpl
 synthSplit args retType name = do
   debug ": trying case split"
+
+  egs <- asks examples
+  guard $ not (null egs)
 
   try [ synthSplitOn i args retType name
       | i <- [0..length args - 1] ]
@@ -382,6 +387,9 @@ synthSplitOn splitOn args retType fnName = do
 synthRecurse :: SynthImpl
 synthRecurse args retType name = do
   debug ": trying recursion split"
+
+  egs <- asks examples
+  guard $ not (null egs)
 
   try [ synthRecurseOn i args retType name
       | i <- [0..length args - 1] ]
@@ -491,6 +499,9 @@ synthUnify :: SynthImpl
 synthUnify args retType fnName = do
   debug ": trying synth unify"
 
+  egs <- asks examples
+  guard $ not (null egs)
+
   try [ synthUnifyOn i args retType fnName
       | i <- [0..length args - 1] ]
 
@@ -588,11 +599,11 @@ insToVals (Eg ins _) = map fromVal ins
 
 argIsThunk :: Int -> [Example] -> Bool
 argIsThunk n [] = False
-argIsThunk n ((Eg args _):_) = isThunk (args !! n)
+argIsThunk n ((Eg args _):rest) = isThunk (args !! n) || argIsThunk n rest
 
 egHasThunk :: [Example] -> Bool
 egHasThunk [] = False
-egHasThunk ((Eg args _):_) = any isThunk args
+egHasThunk ((Eg args _):rest) = any isThunk args || egHasThunk rest
 
 withSynth :: Ident -> [Type] -> Type -> Synth a -> Synth a
 withSynth name args ret s = do
@@ -721,7 +732,10 @@ updateExamples egs = do
       insT = transpose ins
       has = map fst fns
 
-  r <- forM insT $ \c -> case canUpdateAny c has of
+  r <- forM insT $ \c -> do
+     let updatable = nub $ canUpdateAny c has
+     notHoles <- filterM (fmap (maybe True (not . isHole)) . lookupFn) updatable
+     case notHoles of
       [] -> return (c, False)
       updatable -> do
         new <- updateThunks updatable c
@@ -739,12 +753,20 @@ updateExamples egs = do
 
         updateThunks :: [Ident] -> [Arg] -> Synth [Arg]
         updateThunks updatable [] = return []
-        updateThunks updatable (Thunk t []:xs) = (Val (thunkToTerm' t) :) <$> updateThunks updatable xs
+        updateThunks updatable (Thunk t []:xs) = case thunkToTerm t of
+          Just term -> (Val term :) <$> updateThunks updatable xs
+          Nothing -> error $ "thunkToTerm wasn't able to make a term from: " ++ show t
         updateThunks updatable (Thunk t fs:xs) = do
-          (t', fs') <- updateThunk t (fs `intersect` updatable)
+          let (fsUpdatable, fsNonupdatable) = fs `disjoint` updatable
+          (t', fs') <- updateThunk t (fs `intersect` fsUpdatable)
+          let fs'' = fs' ++ fsNonupdatable
           rest <- updateThunks updatable xs
-          return (Thunk t' fs' : rest)
+          return (Thunk t' fs'' : rest)
         updateThunks updatable (x:xs) = (x:) <$> updateThunks updatable xs
+
+        isHole :: SynthFunction -> Bool
+        isHole Fn{ body = SynthHole } = True
+        isHole _ = False
 
 -- applies a function body with named arguments (names provided) to some
 -- arguments, also provided. returns a set of function names which the
@@ -825,7 +847,10 @@ updateThunk th deps = do
   case sequence depFns of
     Nothing -> error "updateThunk called with insufficient functions"
     Just sfs -> return $
-      foldr (\(fnName, fn) (th, ds) -> updateThunkWith fnName fn th)
+      foldr
+        (\(fnName, fn) (th, ds) ->
+          let (th', ds') = updateThunkWith fnName fn th
+          in (th', ds' ++ ds))
         (th, []) (zip deps sfs)
 
 thunkToTerm :: Thunk -> Maybe ClosedTerm
@@ -1028,10 +1053,15 @@ deleteKV k ((k', v'):xs)
 xs \\\ [] = xs
 xs \\\ (y:ys) = [ x | x <- xs, x /= y ] \\\ ys
 
+-- disjoint xs ys = (xs `intersect` ys, xs \\\ (xs `intersect` ys))
+-- TODO: this can surely be implemented better
+disjoint :: Eq a => [a] -> [a] -> ([a], [a])
+disjoint xs ys = (xs `intersect` ys, xs \\\ ys)
+
 traverseContinuation :: Monad m => [a] -> (a -> m [b] -> m [b]) -> m [b]
 traverseContinuation xs f = foldr f (return []) xs
 
-test'' env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
+test env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
   [ Eg [toVal' ([1, 2] :: [Int])] (toClosed' (1 :: Int))
   , Eg [toVal' ([0, 2, 3] :: [Int])] (toClosed' (0 :: Int)) ]
 
@@ -1039,7 +1069,7 @@ test' env = synthesiseInEnvironment env "double" (tyInt --> tyList tyInt --> tyL
   [ Eg [toVal' (0 :: Int), toVal' ([1] :: [Int])] (toClosed' ([0, 0, 1] :: [Int]))
   , Eg [toVal' (2 :: Int), toVal' ([] :: [Int])] (toClosed' ([2, 2] :: [Int])) ]
 
-test env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
+test'' env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
   [ Eg [toVal' (0 :: Int)] (toClosed' False)
   , Eg [toVal' (1 :: Int)] (toClosed' True)
   , Eg [toVal' (2 :: Int)] (toClosed' False) ]
