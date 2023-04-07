@@ -151,13 +151,13 @@ loadFile file = do
     [] -> liftIO $ putStrLn "synthesis failed! :("
     xs -> do
       --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"
-      forM_ (zip [1..5] xs) $ \(num, SynthResult i fns d) -> liftIO $ do
-        putStrLn $ "attempt #" ++ show num ++ ":"
-        putStrLn $ "synthesised " ++ show (length fns) ++ " function(s), depth: " ++ show d
+      forM_ (zip [1..3] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
+        putStrLn $ "attempt #" ++ show num ++ ", reached depth = " ++ show d ++ ":"
+        putStrLn $ "synthesised " ++ show (length fns) ++ " function(s)"
         putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
+        putStrLn ""
         --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
         --putStrLn $ "compiled = " ++ show term
-        putStrLn ""
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do

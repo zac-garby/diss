@@ -51,6 +51,9 @@ data SynthFunction = Fn
        , egs :: [Example] }
   deriving Show
 
+instance Eq SynthFunction where
+  (Fn args _ body _) == (Fn args' _ body' _) = args == args' && body == body'
+
 data Body
   = SynthVar Ident
 
@@ -68,7 +71,7 @@ data Body
 
   -- a hole
   | SynthHole
-  deriving Show
+  deriving (Show, Eq)
 
 data RecursivePart
   -- recursiveBinding, recFnName, [recArgs...]
@@ -76,7 +79,7 @@ data RecursivePart
 
   -- no recursion
   | NoRecurse
-  deriving Show
+  deriving (Show, Eq)
 
 type SynthFunctions = [(Ident, SynthFunction)]
 
@@ -143,6 +146,9 @@ data SynthResult = SynthResult
   , functions :: Functions
   , depthUsed :: Int }
 
+instance Eq SynthResult where
+  (SynthResult root fns _) == (SynthResult root' fns' _) = root == root' && fns == fns'
+
 type Synth = RWST Context SynthFunctions SynthState []
 
 type SynthImpl = [(Ident, Type)] -> Type -> Ident -> Synth SynthFunction
@@ -193,18 +199,7 @@ synth name argTypes ret = do
 
   debug $ "* synthesising " ++ name ++ " : " ++ intercalate " -> " (map show argTypes) ++ " -> " ++ show ret ++ " with fns: " ++ unwords (map fst fns) ++ " and " ++ show (length egs) ++ " examples:"
 
-  -- TODO: so, generating holes is really useful obviously, but it has a few
-  -- issues. most notably, it often leads to less efficient solutions because
-  -- the synthesiser gets "lazy" (not in that way).
-  --
-  -- possible solutions:
-  --  * generate multiple solutions; select the "best" one
-  --     - type Synth a = RWST Context SynthFunctions SynthState (MaybeT [a])?
-  --  * give a penalty for using holes
-  --     - this would be ~equivalent to "holding" a hole solution for a few
-  --       depth iterations, and if nothing is found in n iterations the hole
-  --       solution is accepted.
-  --  * disallow holes / make them a user option
+  guard $ d + 1 < dMax || not (null egs)
 
   if d < dMax then do
     fnArgs <- forM argTypes $ \t -> do
@@ -217,9 +212,10 @@ synth name argTypes ret = do
       forM_ egs' $ \(Eg ins out) ->
         debug $ "  { " ++ intercalate ", " (map show ins) ++ " -> " ++ show out ++ " }"
 
-      withExamples egs' $ try
-          [ synthNoEgs fnArgs ret name
-          , synthUnify fnArgs ret name
+      withExamples egs' $ if null egs then
+        synthNoEgs fnArgs ret name
+      else try
+          [ synthUnify fnArgs ret name
           , synthTrivial fnArgs ret name
           , synthCommonConstr fnArgs ret name
           , synthSplit fnArgs ret name
@@ -437,17 +433,17 @@ synthRecurseOn splitOn args retType fnName = do
 
         -- the body of the entire recursive function being synthesised here is a case
         -- split, where each case either performs a recursive call or doesn't.
-        let body = SynthRecurse splitArg
+        let fnBody = SynthRecurse splitArg
               [ (constrName, conArgs, recursivePart, caseFnName, map fst bodyArgs)
               | (caseFnName, allArgs, recursivePart, constrName, conArgs, bodyArgs) <- cases
               , let fnArgs = map fst bodyArgs ]
 
         let fn = Fn { args = args
                     , ret = retType
-                    , body = body
+                    , body = fnBody
                     , egs = egs }
 
-        debug $ "recursive body = " ++ show body
+        debug $ "recursive body = " ++ show fnBody
 
         -- with this function (the recursive one being defined - "fnName") temporarily added
         -- to the namespace, we synthesise each case in turn.
@@ -923,6 +919,9 @@ data Function = Function
   , fnBody :: Expr
   , fnExamples :: [Example] }
   deriving Show
+
+instance Eq Function where
+  (Function args _ body _) == (Function args' _ body' _) = args == args' && body == body'
 
 type Functions = [(Ident, Function)]
 
