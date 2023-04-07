@@ -732,9 +732,9 @@ updateExamples egs = do
       has = map fst fns
 
   r <- forM insT $ \c -> do
-    let updatable = canUpdateAny c has
-    notHoles <- filterM (fmap isHole . lookupFn') updatable
-    case notHoles of
+     let updatable = nub $ canUpdateAny c has
+     notHoles <- filterM (fmap (maybe True (not . isHole)) . lookupFn) updatable
+     case notHoles of
       [] -> return (c, False)
       updatable -> do
         new <- updateThunks updatable c
@@ -752,11 +752,15 @@ updateExamples egs = do
 
         updateThunks :: [Ident] -> [Arg] -> Synth [Arg]
         updateThunks updatable [] = return []
-        updateThunks updatable (Thunk t []:xs) = (Val (thunkToTerm' t) :) <$> updateThunks updatable xs
+        updateThunks updatable (Thunk t []:xs) = case thunkToTerm t of
+          Just term -> (Val term :) <$> updateThunks updatable xs
+          Nothing -> error $ "thunkToTerm wasn't able to make a term from: " ++ show t
         updateThunks updatable (Thunk t fs:xs) = do
-          (t', fs') <- updateThunk t (fs `intersect` updatable)
+          let (fsUpdatable, fsNonupdatable) = fs `disjoint` updatable
+          (t', fs') <- updateThunk t (fs `intersect` fsUpdatable)
+          let fs'' = fs' ++ fsNonupdatable
           rest <- updateThunks updatable xs
-          return (Thunk t' fs' : rest)
+          return (Thunk t' fs'' : rest)
         updateThunks updatable (x:xs) = (x:) <$> updateThunks updatable xs
 
         isHole :: SynthFunction -> Bool
@@ -843,7 +847,10 @@ updateThunk th deps = do
   case sequence depFns of
     Nothing -> error "updateThunk called with insufficient functions"
     Just sfs -> return $
-      foldr (\(fnName, fn) (th, ds) -> updateThunkWith fnName fn th)
+      foldr
+        (\(fnName, fn) (th, ds) ->
+          let (th', ds') = updateThunkWith fnName fn th
+          in (th', ds' ++ ds))
         (th, []) (zip deps sfs)
 
 thunkToTerm :: Thunk -> Maybe ClosedTerm
@@ -1045,6 +1052,11 @@ deleteKV k ((k', v'):xs)
 (\\\) :: Eq a => [a] -> [a] -> [a]
 xs \\\ [] = xs
 xs \\\ (y:ys) = [ x | x <- xs, x /= y ] \\\ ys
+
+-- disjoint xs ys = (xs `intersect` ys, xs \\\ (xs `intersect` ys))
+-- TODO: this can surely be implemented better
+disjoint :: Eq a => [a] -> [a] -> ([a], [a])
+disjoint xs ys = (xs `intersect` ys, xs \\\ ys)
 
 traverseContinuation :: Monad m => [a] -> (a -> m [b] -> m [b]) -> m [b]
 traverseContinuation xs f = foldr f (return []) xs
