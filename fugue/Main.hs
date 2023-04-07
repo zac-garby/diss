@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use list literal pattern" #-}
+
 module Main where
 
 import System.IO
@@ -147,7 +150,7 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  case test env of
+  case testStutter env of
     [] -> liftIO $ putStrLn "synthesis failed! :("
     xs -> do
       --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"

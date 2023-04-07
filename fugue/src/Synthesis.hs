@@ -1073,7 +1073,7 @@ test' env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
   , Eg [toVal' (1 :: Int)] (toClosed' True)
   , Eg [toVal' (2 :: Int)] (toClosed' False) ]
 
-testStutter env = synthesiseInEnvironment env "stutter" (tyList tyInt --> tyList tyInt)
+testStutter env = synthesiseInEnvironment env "stutter" (tyList (TyVar "a") --> tyList (TyVar "a"))
   [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))
   --, Eg [toVal' ([1] :: [Int])] (toClosed' ([1, 1] :: [Int]))
   , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1, 1, 2, 2] :: [Int])) ]
