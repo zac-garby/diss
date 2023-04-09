@@ -1009,7 +1009,10 @@ simplifyFn (Function args ret body egs)
 simplify :: Expr -> Expr
 simplify (App e1 e2) = App (simplify e1) (simplify e2)
 simplify (Abs x b) = Abs x (simplify b)
-simplify (Let i v b) = Let i (simplify v) (simplify b)
+simplify (Let i v b)
+  | refs > 0 = subExpr [(i, simplify v)] (simplify b)
+  | otherwise = Let i (simplify v) (simplify b)
+  where refs = references i b
 simplify (LetRec i v b)
   | refs > 0 = subExpr [(i, simplify v)] (simplify b)
   | otherwise = LetRec i (simplify v) (simplify b)
