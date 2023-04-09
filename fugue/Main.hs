@@ -156,10 +156,11 @@ test' env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
   , Eg [toVal' (1 :: Int)] (toClosed' True)
   , Eg [toVal' (2 :: Int)] (toClosed' False) ]
 
+test :: Environment -> [SynthResult]
 test env = synthesiseInEnvironment env "length" (tyList (TyVar "a") --> tyInt)
-  [ Eg [toVal' ([] :: [Bool])] (toClosed' (0 :: Int))
-  , Eg [toVal' ([True] :: [Bool])] (toClosed' (1 :: Int))
-  , Eg [toVal' ([True, False, True] :: [Bool])] (toClosed' (3 :: Int)) ]
+  [ Eg [toVal' ([] :: [Int])] (toClosed' (0 :: Int))
+  , Eg [toVal' ([1] :: [Int])] (toClosed' (1 :: Int))
+  , Eg [toVal' ([3, 2, 1] :: [Int])] (toClosed' (3 :: Int)) ]
 
 testStutter env = synthesiseInEnvironment env "stutter" (tyList (TyVar "a") --> tyList (TyVar "a"))
   [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))

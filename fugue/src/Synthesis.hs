@@ -237,11 +237,17 @@ synthTrivial = synthEachArg "trivial" $ \i args retType fnName -> do
   egs <- asks examples
 
   guard $ all (\(Eg egArgs egRes) -> egArgs !! i `hasVal` egRes) egs
+
+  -- synth trivial only applies when the type of the argument under inspection
+  -- can be unified with the required return type.
+  let (argName, argTy) = args !! i
+  guard $ argTy <= retType
+
   debug "done: synth trivial"
-  
+
   return $ Fn { args = args
               , ret = retType
-              , body = SynthVar (fst $ args !! i)
+              , body = SynthVar argName
               , egs = egs }
 
 synthAllSame :: SynthImpl
