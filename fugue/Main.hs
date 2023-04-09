@@ -143,21 +143,20 @@ typecheckTerm t = do
   dts <- gets types
   typecheck env dts t ?? TypeErr
 
-test''' env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
+testHead env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
   [ Eg [toVal' ([1, 2] :: [Int])] (toClosed' (1 :: Int))
   , Eg [toVal' ([0, 2, 3] :: [Int])] (toClosed' (0 :: Int)) ]
 
-test'' env = synthesiseInEnvironment env "double" (tyInt --> tyList tyInt --> tyList tyInt)
+testDouble env = synthesiseInEnvironment env "double" (tyInt --> tyList tyInt --> tyList tyInt)
   [ Eg [toVal' (0 :: Int), toVal' ([1] :: [Int])] (toClosed' ([0, 0, 1] :: [Int]))
   , Eg [toVal' (2 :: Int), toVal' ([] :: [Int])] (toClosed' ([2, 2] :: [Int])) ]
 
-test' env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
+testIsOne env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
   [ Eg [toVal' (0 :: Int)] (toClosed' False)
   , Eg [toVal' (1 :: Int)] (toClosed' True)
   , Eg [toVal' (2 :: Int)] (toClosed' False) ]
 
-test :: Environment -> [SynthResult]
-test env = synthesiseInEnvironment env "length" (tyList (TyVar "a") --> tyInt)
+testLength env = synthesiseInEnvironment env "length" (tyList (TyVar "a") --> tyInt)
   [ Eg [toVal' ([] :: [Int])] (toClosed' (0 :: Int))
   , Eg [toVal' ([1] :: [Int])] (toClosed' (1 :: Int))
   , Eg [toVal' ([3, 2, 1] :: [Int])] (toClosed' (3 :: Int)) ]
@@ -174,7 +173,7 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  case test env of
+  case testLength env of
     [] -> liftIO $ putStrLn "synthesis failed! :("
     xs -> do
       --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"

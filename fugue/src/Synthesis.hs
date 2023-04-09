@@ -19,6 +19,7 @@ module Synthesis
   , toVal'
   , toClosed
   , toClosed'
+  , simplify
   ) where
 
 import Data.Maybe
@@ -43,13 +44,20 @@ data Context = Context
   , env :: Env
   , dataTypes :: DataTypes
   , fns :: SynthFunctions
-  , mayUseHomoRule :: Bool }
+  , mayUseHomoRule :: Bool
+  , homoAvoidance :: Int
+  , noEgsAvoidance :: Int }
+
+data SynthState = SynthState
+  { newNames :: [Ident]
+  , maxDepth :: Int }
+  deriving Show
 
 data SynthFunction = Fn
-       { args :: [(Ident, Type)]
-       , ret :: Type
-       , body :: Body
-       , egs :: [Example] }
+  { args :: [(Ident, Type)]
+  , ret :: Type
+  , body :: Body
+  , egs :: [Example] }
   deriving Show
 
 instance Eq SynthFunction where
@@ -113,11 +121,6 @@ data Example = Eg
   , out :: ClosedTerm }
   deriving Show
 
-data SynthState = SynthState
-  { newNames :: [Ident]
-  , maxDepth :: Int }
-  deriving Show
-
 data SynthResult = SynthResult
   { root :: Ident
   , functions :: Functions
@@ -150,7 +153,8 @@ synthesise env dts fnName goal egs = do
   let fns' = removeFnsUnusedBy fnName (unwindFrom fnName fns)
       fns'' = [ (fnName, simplifyFn fn) | (fnName, fn) <- fns' ]
   return $ SynthResult fnName fns'' (maxDepth st)
-  where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts, mayUseHomoRule = False }
+  where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts
+                      , mayUseHomoRule = False, homoAvoidance = 2, noEgsAvoidance = 1 }
         defaultState = SynthState { newNames = allVars, maxDepth = 0 }
         problem = uncurry (upToDepth 16 ... synth fnName) (unfoldFnTy goal)
 
@@ -175,18 +179,19 @@ synth name argTypes ret = do
   egs <- asks examples
   fns <- asks fns
   canHomo <- asks mayUseHomoRule
+  avoid <- asks noEgsAvoidance
 
   debug $ "* synthesising " ++ name ++ " : "
     ++ intercalate " -> " (map show argTypes)
     ++ " -> " ++ show ret ++ " with fns: " ++ unwords (map fst fns)
     ++ " and " ++ show (length egs) ++ " examples:"
 
-  -- continue if either we are one away from reaching the max depth, or
+  -- continue if either we are at least one away from reaching the max depth, or
   -- if there are a non-zero amount of examples.
   -- 
-  -- this means that the null-examples rule only applies if we are one
+  -- this means that the null-examples rule only applies if we are at least one
   -- away from the max depth, which helps prune the tree a bit.
-  guard $ d + 1 < dMax || not (null egs)
+  guard $ d + avoid < dMax || not (null egs)
 
   if d < dMax then do
     fnArgs <- forM argTypes $ \t -> do
@@ -257,7 +262,11 @@ synthAllSame args retType _ = do
 
   egs <- asks examples
   canUse <- asks mayUseHomoRule
-  guard $ canUse && not (null egs)
+  dMax <- gets maxDepth
+  d <- asks depth
+  avoid <- asks homoAvoidance
+
+  guard $ canUse && d + avoid < dMax && not (null egs)
 
   case egs of
     [] -> fail "doesn't apply"
@@ -1010,13 +1019,17 @@ simplify :: Expr -> Expr
 simplify (App e1 e2) = App (simplify e1) (simplify e2)
 simplify (Abs x b) = Abs x (simplify b)
 simplify (Let i v b)
-  | refs > 0 = subExpr [(i, simplify v)] (simplify b)
-  | otherwise = Let i (simplify v) (simplify b)
-  where refs = references i b
+  | refs == 0 = b'
+  | refs == 1 = simplify (subExpr [(i, v')] b')
+  | otherwise = Let i v' b'
+  where (v', b') = (simplify v, simplify b)
+        refs = references i b'
 simplify (LetRec i v b)
-  | refs > 0 = subExpr [(i, simplify v)] (simplify b)
-  | otherwise = LetRec i (simplify v) (simplify b)
-  where refs = references i b
+  | refs == 0 = b'
+  | refs == 1 = simplify (subExpr [(i, v')] b')
+  | otherwise = LetRec i v' b'
+  where (v', b') = (simplify v, simplify b)
+        refs = references i b'
 simplify (If c b1 b2) = If (simplify c) (simplify b1) (simplify b2)
 simplify (Case c cases) =
   let bodies' = [ simplify b | (_, _, b) <- cases ]
