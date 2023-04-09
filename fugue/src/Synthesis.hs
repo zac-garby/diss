@@ -264,11 +264,6 @@ synthAllSame args retType _ = do
       else
         fail "doesn't apply; not all same output"
 
-{-
-In theory, could give visibility to the parent function in the sub-syntheses in
-  other problems too (including common constr, case-splits, etc). It may be best
-  to limit it to just the explicit recursion introductions though.
--}
 synthCommonConstr :: SynthImpl
 synthCommonConstr args retType fnName = do
   debug ": trying common constr"
@@ -650,14 +645,6 @@ getType :: SynthFunction -> Scheme
 getType (Fn args ret _ _) =
   let argTypes = map snd args
   in finalise $ foldr (-->) ret argTypes
-
-collapse :: SynthFunctions -> Expr -> Expr
-collapse fns app@(App f x) = case unfoldApp app of
-  (Var f', xs') -> case lookup f' fns of
-    Nothing -> App (collapse fns f) (collapse fns x)
-    Just fn -> app
-  _ -> app
-collapse _ _ = error "not yet implemented collapse for this expression"
 
 fresh :: Synth Ident
 fresh = do
