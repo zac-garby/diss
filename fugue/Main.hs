@@ -177,10 +177,14 @@ loadFile file = do
     [] -> liftIO $ putStrLn "synthesis failed! :("
     xs -> do
       --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"
-      forM_ (zip [1..5] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
+      forM_ (zip [1..] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
         putStrLn $ "attempt #" ++ show num ++ ", reached depth = " ++ show d ++ ":"
         putStrLn $ "synthesised " ++ show (length fns) ++ " function(s)"
         putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
+
+        putStr "   (press <return> for another try...)"
+        hFlush stdout
+        getLine
         putStrLn ""
         --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
         --putStrLn $ "compiled = " ++ show term
