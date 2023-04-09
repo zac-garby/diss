@@ -147,8 +147,9 @@ synthesise ::
   -> [SynthResult]
 synthesise env dts fnName goal egs = do
   (fn, st, fns) <- runSynth defaultState ctx problem
-  let fns' = removeRedundant fnName (unwindFrom fnName fns)
-  return $ SynthResult fnName fns' (maxDepth st)
+  let fns' = removeFnsUnusedBy fnName (unwindFrom fnName fns)
+      fns'' = [ (fnName, simplifyFn fn) | (fnName, fn) <- fns' ]
+  return $ SynthResult fnName fns'' (maxDepth st)
   where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts, mayUseHomoRule = False }
         defaultState = SynthState { newNames = allVars, maxDepth = 0 }
         problem = uncurry (upToDepth 16 ... synth fnName) (unfoldFnTy goal)
@@ -214,7 +215,7 @@ synth name argTypes ret = do
   else do
     debug "  : failed: out of depth"
     fail "out of depth"
-  
+
   where noHomo = local (\c -> c { mayUseHomoRule = False })
 
 synthNoEgs :: SynthImpl
@@ -233,7 +234,7 @@ synthNoEgs args retType _ = do
     fail "there are examples so this rule doesn't apply"
 
 synthTrivial :: SynthImpl
-synthTrivial = synthEachArg "trivial" $ \i args retType fnName -> do
+synthTrivial = eachArg "trivial" $ \i args retType fnName -> do
   egs <- asks examples
 
   guard $ all (\(Eg egArgs egRes) -> egArgs !! i `hasVal` egRes) egs
@@ -309,7 +310,7 @@ synthCommonConstr args retType fnName = do
       return fn
 
 synthSplit :: SynthImpl
-synthSplit = synthEachArg "case split" $ \splitOn args retType fnName -> do
+synthSplit = eachArg "case split" $ \splitOn args retType fnName -> do
   egs <- asks examples
   dts <- asks dataTypes
 
@@ -343,22 +344,23 @@ synthSplit = synthEachArg "case split" $ \splitOn args retType fnName -> do
                  , caseFnName
                  , allArgs )
 
-        let body = SynthCase splitArg [ (con, conArgs, caseFn, map fst allArgs)
-                                      | (con, conArgs, caseFn, allArgs) <- cases ]
+        let fnBody = SynthCase splitArg [ (con, conArgs, caseFn, map fst allArgs)
+                                        | (con, conArgs, caseFn, allArgs) <- cases ]
         let fn = Fn { args = args
                     , ret = retType
-                    , body = body
+                    , body = fnBody
                     , egs = egs }
 
-        withFunction fnName fn $ traverseContinuation cases $ \(con, conArgs, caseFn, allArgs) c -> do
-          let examples =
-                     [ Eg (ins ++ map Val conArgs') out
-                     | Eg ins out <- egs
-                     , let (con', conArgs') = deconstruct' (fromVal (ins !! splitOn))
-                     , con == con']
+        withFunction fnName fn $
+          traverseContinuation cases $ \(con, conArgs, caseFn, allArgs) c -> do
+            let examples =
+                  [ Eg (ins ++ map Val conArgs') out
+                  | Eg ins out <- egs
+                  , let (con', conArgs') = deconstruct' (fromVal (ins !! splitOn))
+                  , con == con']
 
-          fn <- withExamples examples $ synth caseFn (map snd allArgs) retType
-          withFunction caseFn fn c
+            fn <- withExamples examples $ synth caseFn (map snd allArgs) retType
+            withFunction caseFn fn c
 
         debug $ "done: split on arg " ++ show splitOn
 
@@ -368,7 +370,7 @@ synthSplit = synthEachArg "case split" $ \splitOn args retType fnName -> do
     _ -> fail "can't split on non-ADT"
 
 synthRecurse :: SynthImpl
-synthRecurse = synthEachArg "recurse" $ \splitOn args retType fnName -> do
+synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
   egs <- asks examples
   dts <- asks dataTypes
 
@@ -470,7 +472,7 @@ chooseRecursiveArg :: Type -> [(Ident, Type)] -> Maybe Ident
 chooseRecursiveArg t consArgs = fst <$> find (\(_, t') -> t == t') consArgs
 
 synthUnify :: SynthImpl
-synthUnify = synthEachArg "unify" $ \i args retType fnName -> do
+synthUnify = eachArg "unify" $ \i args retType fnName -> do
   egs <- asks examples
 
   let insAt_i = transpose (map ins egs) !! i
@@ -496,8 +498,8 @@ synthUnify = synthEachArg "unify" $ \i args retType fnName -> do
       withExamples egs' $ synth fnName' (map snd args) retType
     _ -> fail "couldn't unify"
 
-synthEachArg :: String -> (Int -> SynthImpl) -> SynthImpl
-synthEachArg name f args retType fnName = do
+eachArg :: String -> (Int -> SynthImpl) -> SynthImpl
+eachArg name f args retType fnName = do
   debug $ ": trying " ++ name
 
   egs <- asks examples
@@ -638,7 +640,7 @@ assembleTerm (ConstrApp c args) = applyMany $ Var c : map assembleTerm args
 
 assembleRecursiveBody :: RecursivePart -> Expr -> Expr
 assembleRecursiveBody (Recurse b recFn recArgs) body
-  = Let b (applyManyIdents (recFn : recArgs)) body
+  = LetRec b (applyManyIdents (recFn : recArgs)) body
 assembleRecursiveBody NoRecurse body = body
 
 assemble :: SynthFunction -> Expr
@@ -996,9 +998,38 @@ allFunctionsUsedBy x fns = go x fns []
                 let newCalls = calledBy body \\\ (x : visited)
                 in foldl' (\vs call -> go call fns vs) visited newCalls
 
-removeRedundant :: Ident -> Functions -> Functions
-removeRedundant x fns = filter ((`elem` used) . fst) fns
+removeFnsUnusedBy :: Ident -> Functions -> Functions
+removeFnsUnusedBy x fns = filter ((`elem` used) . fst) fns
   where used = allFunctionsUsedBy x fns
+
+simplifyFn :: Function -> Function
+simplifyFn (Function args ret body egs)
+  = Function args ret (simplify body) egs
+
+simplify :: Expr -> Expr
+simplify (App e1 e2) = App (simplify e1) (simplify e2)
+simplify (Abs x b) = Abs x (simplify b)
+simplify (Let i v b) = Let i (simplify v) (simplify b)
+simplify (LetRec i v b)
+  | refs > 0 = subExpr [(i, simplify v)] (simplify b)
+  | otherwise = LetRec i (simplify v) (simplify b)
+  where refs = references i b
+simplify (If c b1 b2) = If (simplify c) (simplify b1) (simplify b2)
+simplify (Case c cases) =
+  let bodies' = [ simplify b | (_, _, b) <- cases ]
+  in case nub bodies' of
+    [unique] -> unique
+    _ -> Case c [ (con, conArgs, b') | ((con, conArgs, _), b') <- zip cases bodies' ]
+simplify (LitList es) = LitList (map simplify es)
+simplify (LitTuple es) = LitTuple (map simplify es)
+simplify (TypeSpec e t) = TypeSpec (simplify e) t
+simplify old = old
+
+-- counts references of an ident in an expr
+references :: Ident -> Expr -> Int
+references i = foldExpr (+) f 0
+  where f (Var v) = if v == i then 1 else 0
+        f _ = 0
 
 calls :: Expr -> Ident -> Bool
 calls e i = i `elem` calledBy e
