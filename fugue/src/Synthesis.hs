@@ -201,12 +201,11 @@ synth name argTypes ret = do
       withExamples egs' $
         if null egs then
           synthNoEgs fnArgs ret name
-        else local (\c -> c { mayUseHomoRule = False })
-                (each [ synthUnify fnArgs ret name
-                      , synthTrivial fnArgs ret name
-                      , synthCommonConstr fnArgs ret name
-                      , synthRecurse fnArgs ret name
-                      , synthSplit fnArgs ret name ])
+        else noHomo (each [ synthUnify fnArgs ret name
+                          , synthTrivial fnArgs ret name
+                          , synthCommonConstr fnArgs ret name
+                          , synthRecurse fnArgs ret name
+                          , synthSplit fnArgs ret name ])
             `orElse` synthAllSame fnArgs ret name
 
     emitFunction name f
@@ -215,6 +214,8 @@ synth name argTypes ret = do
   else do
     debug "  : failed: out of depth"
     fail "out of depth"
+  
+  where noHomo = local (\c -> c { mayUseHomoRule = False })
 
 synthNoEgs :: SynthImpl
 synthNoEgs args retType _ = do
