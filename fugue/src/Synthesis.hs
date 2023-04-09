@@ -158,7 +158,7 @@ runSynth s c p = runRWST p c s
 
 upToDepth :: Int -> Synth a -> Synth a
 upToDepth toDepth f = do
-  try [ synthWithMaxDepth d | d <- [1..toDepth] ]
+  each [ synthWithMaxDepth d | d <- [1..toDepth] ]
   where synthWithMaxDepth d = do
           modify $ \s -> s { maxDepth = d }
           debug $ "## synthesising with max depth " ++ show d ++ " ##"
@@ -202,11 +202,11 @@ synth name argTypes ret = do
         if null egs then
           synthNoEgs fnArgs ret name
         else local (\c -> c { mayUseHomoRule = False })
-                (try [ synthUnify fnArgs ret name
-                     , synthTrivial fnArgs ret name
-                     , synthCommonConstr fnArgs ret name
-                     , synthRecurse fnArgs ret name
-                     , synthSplit fnArgs ret name ])
+                (each [ synthUnify fnArgs ret name
+                      , synthTrivial fnArgs ret name
+                      , synthCommonConstr fnArgs ret name
+                      , synthRecurse fnArgs ret name
+                      , synthSplit fnArgs ret name ])
             `orElse` synthAllSame fnArgs ret name
 
     emitFunction name f
@@ -232,22 +232,16 @@ synthNoEgs args retType _ = do
     fail "there are examples so this rule doesn't apply"
 
 synthTrivial :: SynthImpl
-synthTrivial args retType _ = do
-  debug ": trying synth trivial"
-
+synthTrivial = synthEachArg "trivial" $ \i args retType fnName -> do
   egs <- asks examples
-  guard $ not (null egs)
 
-  go egs 0
-  where go egs n
-          | n >= length args = fail "none of the arguments matched"
-          | all (\(Eg egArgs egRes) -> egArgs !! n `hasVal` egRes) egs = do
-            debug "done: synth trivial"
-            return Fn { args = args
-                      , ret = retType
-                      , body = SynthVar (fst $ args !! n)
-                      , egs = egs }
-          | otherwise = go egs (n + 1)
+  guard $ all (\(Eg egArgs egRes) -> egArgs !! i `hasVal` egRes) egs
+  debug "done: synth trivial"
+  
+  return $ Fn { args = args
+              , ret = retType
+              , body = SynthVar (fst $ args !! i)
+              , egs = egs }
 
 synthAllSame :: SynthImpl
 synthAllSame args retType _ = do
@@ -313,18 +307,7 @@ synthCommonConstr args retType fnName = do
       return fn
 
 synthSplit :: SynthImpl
-synthSplit args retType name = do
-  debug ": trying case split"
-
-  egs <- asks examples
-  guard $ not (null egs)
-
-  try [ synthSplitOn i args retType name
-      | i <- [0..length args - 1] ]
-
-synthSplitOn :: Int -> SynthImpl
-synthSplitOn splitOn args retType fnName = do
-  debug $ "- trying split on arg " ++ show splitOn
+synthSplit = synthEachArg "case split" $ \splitOn args retType fnName -> do
   egs <- asks examples
   dts <- asks dataTypes
 
@@ -383,17 +366,7 @@ synthSplitOn splitOn args retType fnName = do
     _ -> fail "can't split on non-ADT"
 
 synthRecurse :: SynthImpl
-synthRecurse args retType name = do
-  debug ": trying recursion split"
-
-  egs <- asks examples
-  guard $ not (null egs)
-
-  try [ synthRecurseOn i args retType name
-      | i <- [0..length args - 1] ]
-
-synthRecurseOn :: Int -> SynthImpl
-synthRecurseOn splitOn args retType fnName = do
+synthRecurse = synthEachArg "recurse" $ \splitOn args retType fnName -> do
   egs <- asks examples
   dts <- asks dataTypes
 
@@ -495,17 +468,7 @@ chooseRecursiveArg :: Type -> [(Ident, Type)] -> Maybe Ident
 chooseRecursiveArg t consArgs = fst <$> find (\(_, t') -> t == t') consArgs
 
 synthUnify :: SynthImpl
-synthUnify args retType fnName = do
-  debug ": trying synth unify"
-
-  egs <- asks examples
-  guard $ not (null egs)
-
-  try [ synthUnifyOn i args retType fnName
-      | i <- [0..length args - 1] ]
-
-synthUnifyOn :: Int -> SynthImpl
-synthUnifyOn i args retType fnName = do
+synthUnify = synthEachArg "unify" $ \i args retType fnName -> do
   egs <- asks examples
 
   let insAt_i = transpose (map ins egs) !! i
@@ -530,6 +493,15 @@ synthUnifyOn i args retType fnName = do
 
       withExamples egs' $ synth fnName' (map snd args) retType
     _ -> fail "couldn't unify"
+
+synthEachArg :: String -> (Int -> SynthImpl) -> SynthImpl
+synthEachArg name f args retType fnName = do
+  debug $ ": trying " ++ name
+
+  egs <- asks examples
+  guard $ not (null egs)
+
+  each [ f i args retType fnName | i <- [0..length args - 1] ]
 
 -- e.g. <2 :: (2 :: h [2] 2 [] [])> unifies with 2 :: (2 :: []),
 -- providing the example: h [2] 2 [] [] => [].
@@ -574,10 +546,10 @@ replaceThunkCall f t (ThunkTerm t') = ThunkTerm t'
 
 debug :: String -> Synth ()
 debug _ = return ()
-debug s = do
-  d <- asks depth
-  let prefix = concat (replicate d "* ")
-  traceM $ prefix ++ s
+-- debug s = do
+--   d <- asks depth
+--   let prefix = concat (replicate d "* ")
+--   traceM $ prefix ++ s
 
 hasVal :: Arg -> ClosedTerm -> Bool
 hasVal (Val v) t = v == t
@@ -630,9 +602,9 @@ withFunctionInEnv name f e =
       { env = insertKV name (getType f, Local) (env c)
       , fns = (name, f) : fns c })
 
-try :: (MonadFail m, Alternative m, Monoid w) => [RWST r w s m a] -> RWST r w s m a
-try [] = fail "exhausted all possibilities"
-try (x:xs) = rwsT $ \r s -> runRWST x r s <|> runRWST (try xs) r s
+each :: (MonadFail m, Alternative m, Monoid w) => [RWST r w s m a] -> RWST r w s m a
+each [] = fail "exhausted all possibilities"
+each (x:xs) = rwsT $ \r s -> runRWST x r s <|> runRWST (each xs) r s
 
 orElse :: Monoid w => RWST r w s [] a -> RWST r w s [] a -> RWST r w s [] a
 orElse first alt = rwsT $ \r s -> case runRWST first r s of
