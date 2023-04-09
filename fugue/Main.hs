@@ -143,6 +143,29 @@ typecheckTerm t = do
   dts <- gets types
   typecheck env dts t ?? TypeErr
 
+test''' env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
+  [ Eg [toVal' ([1, 2] :: [Int])] (toClosed' (1 :: Int))
+  , Eg [toVal' ([0, 2, 3] :: [Int])] (toClosed' (0 :: Int)) ]
+
+test'' env = synthesiseInEnvironment env "double" (tyInt --> tyList tyInt --> tyList tyInt)
+  [ Eg [toVal' (0 :: Int), toVal' ([1] :: [Int])] (toClosed' ([0, 0, 1] :: [Int]))
+  , Eg [toVal' (2 :: Int), toVal' ([] :: [Int])] (toClosed' ([2, 2] :: [Int])) ]
+
+test' env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
+  [ Eg [toVal' (0 :: Int)] (toClosed' False)
+  , Eg [toVal' (1 :: Int)] (toClosed' True)
+  , Eg [toVal' (2 :: Int)] (toClosed' False) ]
+
+test env = synthesiseInEnvironment env "length" (tyList (TyVar "a") --> tyInt)
+  [ Eg [toVal' ([] :: [Bool])] (toClosed' (0 :: Int))
+  , Eg [toVal' ([True] :: [Bool])] (toClosed' (1 :: Int))
+  , Eg [toVal' ([True, False, True] :: [Bool])] (toClosed' (3 :: Int)) ]
+
+testStutter env = synthesiseInEnvironment env "stutter" (tyList (TyVar "a") --> tyList (TyVar "a"))
+  [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))
+  --, Eg [toVal' ([1] :: [Int])] (toClosed' ([1, 1] :: [Int]))
+  , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1, 1, 2, 2] :: [Int])) ]
+
 loadFile :: String -> Interactive ()
 loadFile file = do
   s <- liftIO $ readFile file
@@ -150,11 +173,11 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  case testStutter env of
+  case test env of
     [] -> liftIO $ putStrLn "synthesis failed! :("
     xs -> do
       --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"
-      forM_ (zip [1..3] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
+      forM_ (zip [1..5] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
         putStrLn $ "attempt #" ++ show num ++ ", reached depth = " ++ show d ++ ":"
         putStrLn $ "synthesised " ++ show (length fns) ++ " function(s)"
         putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)

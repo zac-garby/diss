@@ -14,11 +14,11 @@ module Synthesis
   , ClosedTerm (..)
 
   , synthesise
-  , removeRedundant
-  , unwindFrom
-
-  , test
-  , testStutter
+  , synthesiseInEnvironment
+  , toVal
+  , toVal'
+  , toClosed
+  , toClosed'
   ) where
 
 import Data.Maybe
@@ -42,7 +42,8 @@ data Context = Context
   , depth :: Int
   , env :: Env
   , dataTypes :: DataTypes
-  , fns :: SynthFunctions }
+  , fns :: SynthFunctions
+  , mayUseHomoRule :: Bool }
 
 data SynthFunction = Fn
        { args :: [(Ident, Type)]
@@ -56,6 +57,8 @@ instance Eq SynthFunction where
 
 data Body
   = SynthVar Ident
+
+  | SynthLiteral ClosedTerm
 
   -- constrName [(fnName, [fnArgs...])]
   | SynthConstr Ident [(Ident, [Ident])]
@@ -89,38 +92,12 @@ data Thunk
   | ThunkRecLet Thunk [Ident] Ident [ClosedTerm]-- let x = <th | deps> in f' a' b' c' {x}
   | ThunkTerm ClosedTerm
 
-instance Show Thunk where
-  show (ThunkConstr "Zero" []) = "0"
-  show (ThunkConstr "Suc" [t]) = case readMaybe (show t) :: Maybe Int of
-    Just n -> show (1 + n)
-    Nothing -> "(Suc " ++ show t ++ ")"
-  show (ThunkConstr "Nil" []) = "[]"
-  show (ThunkConstr "Cons" [l, r]) = "(" ++ show l ++ " :: " ++ show r ++ ")"
-  show (ThunkConstr con []) = con
-  show (ThunkConstr con ts) = "(" ++ con ++ " " ++ unwords (map show ts) ++ ")"
-
-  show (ThunkCall f ts) = "(" ++ f ++ " " ++ unwords (map show ts) ++ ")"
-  show (ThunkTerm t) = show t
-  show (ThunkRecLet th deps callFn callArgs) =
-    "let <x> = <" ++ show th ++ " | " ++ unwords deps ++ "> in " ++
-    callFn ++ " " ++ unwords (map show callArgs) ++ " <x>"
-
 -- a ClosedTerm is similar to a Term, but is always a fully-evaluated value.
 -- furthermore, it contains only values that can be used as synthesis examples,
 -- and so doesn't allow abstractions, etc. it can always be represented as
 -- the application of some constructor to zero or more arguments, also closed terms.
 data ClosedTerm = ConstrApp Ident [ClosedTerm]
   deriving Eq
-
-instance Show ClosedTerm where
-  show (ConstrApp "Zero" []) = "0"
-  show (ConstrApp "Suc" [t]) = case readMaybe (show t) :: Maybe Int of
-    Just n -> show (1 + n)
-    Nothing -> "(Suc " ++ show t ++ ")"
-  show (ConstrApp "Nil" []) = "[]"
-  show (ConstrApp "Cons" [l, r]) = "(" ++ show l ++ " :: " ++ show r ++ ")"
-  show (ConstrApp i []) = i
-  show (ConstrApp i ts) = "(" ++ i ++ " " ++ unwords (map show ts) ++ ")"
 
 -- an Arg represents an argument of an example, and is either a fully-evaluated term Val,
 -- or a thunk. If it is a thunk, it is a partially-evaluated term. A thunk
@@ -172,7 +149,7 @@ synthesise env dts fnName goal egs = do
   (fn, st, fns) <- runSynth defaultState ctx problem
   let fns' = removeRedundant fnName (unwindFrom fnName fns)
   return $ SynthResult fnName fns' (maxDepth st)
-  where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts }
+  where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts, mayUseHomoRule = False }
         defaultState = SynthState { newNames = allVars, maxDepth = 0 }
         problem = uncurry (upToDepth 16 ... synth fnName) (unfoldFnTy goal)
 
@@ -196,9 +173,18 @@ synth name argTypes ret = do
   dMax <- gets maxDepth
   egs <- asks examples
   fns <- asks fns
+  canHomo <- asks mayUseHomoRule
 
-  debug $ "* synthesising " ++ name ++ " : " ++ intercalate " -> " (map show argTypes) ++ " -> " ++ show ret ++ " with fns: " ++ unwords (map fst fns) ++ " and " ++ show (length egs) ++ " examples:"
+  debug $ "* synthesising " ++ name ++ " : "
+    ++ intercalate " -> " (map show argTypes)
+    ++ " -> " ++ show ret ++ " with fns: " ++ unwords (map fst fns)
+    ++ " and " ++ show (length egs) ++ " examples:"
 
+  -- continue if either we are one away from reaching the max depth, or
+  -- if there are a non-zero amount of examples.
+  -- 
+  -- this means that the null-examples rule only applies if we are one
+  -- away from the max depth, which helps prune the tree a bit.
   guard $ d + 1 < dMax || not (null egs)
 
   if d < dMax then do
@@ -212,14 +198,16 @@ synth name argTypes ret = do
       forM_ egs' $ \(Eg ins out) ->
         debug $ "  { " ++ intercalate ", " (map show ins) ++ " -> " ++ show out ++ " }"
 
-      withExamples egs' $ if null egs then
-        synthNoEgs fnArgs ret name
-      else try
-          [ synthUnify fnArgs ret name
-          , synthTrivial fnArgs ret name
-          , synthCommonConstr fnArgs ret name
-          , synthSplit fnArgs ret name
-          , synthRecurse fnArgs ret name ]
+      withExamples egs' $
+        if null egs then
+          synthNoEgs fnArgs ret name
+        else local (\c -> c { mayUseHomoRule = False })
+                (try [ synthUnify fnArgs ret name
+                     , synthTrivial fnArgs ret name
+                     , synthCommonConstr fnArgs ret name
+                     , synthRecurse fnArgs ret name
+                     , synthSplit fnArgs ret name ])
+            `orElse` synthAllSame fnArgs ret name
 
     emitFunction name f
 
@@ -255,11 +243,31 @@ synthTrivial args retType _ = do
           | n >= length args = fail "none of the arguments matched"
           | all (\(Eg egArgs egRes) -> egArgs !! n `hasVal` egRes) egs = do
             debug "done: synth trivial"
-            return $ Fn { args = args
-                        , ret = retType
-                        , body = SynthVar (fst $ args !! n)
-                        , egs = egs }
+            return Fn { args = args
+                      , ret = retType
+                      , body = SynthVar (fst $ args !! n)
+                      , egs = egs }
           | otherwise = go egs (n + 1)
+
+synthAllSame :: SynthImpl
+synthAllSame args retType _ = do
+  debug ": trying synth all same"
+
+  egs <- asks examples
+  canUse <- asks mayUseHomoRule
+  guard $ canUse && not (null egs)
+
+  case egs of
+    [] -> fail "doesn't apply"
+    (Eg _ o:egs) -> do
+      if all ((== o) . out) egs then do
+        debug $ "done: all same (o = " ++ show o ++ ")"
+        return Fn { args = args
+                  , ret = retType
+                  , body = SynthLiteral o
+                  , egs = egs }
+      else
+        fail "doesn't apply; not all same output"
 
 {-
 In theory, could give visibility to the parent function in the sub-syntheses in
@@ -472,7 +480,8 @@ synthRecurseOn splitOn args retType fnName = do
                                , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
                                , con == con' ]
 
-                withExamples examples $ synth caseFnName (map snd allArgs) retType
+                local (\c -> c { mayUseHomoRule = True }) $
+                  withExamples examples $ synth caseFnName (map snd allArgs) retType
 
             withFunction caseFnName fn c
 
@@ -499,15 +508,11 @@ synthUnifyOn :: Int -> SynthImpl
 synthUnifyOn i args retType fnName = do
   egs <- asks examples
 
-  debug $ " - synthUnifyOn " ++ show i ++ "; egsT = " ++ show (transpose (map ins egs))
-
   let insAt_i = transpose (map ins egs) !! i
       outs = map out egs
 
-  debug $ " - trying unify on " ++ show i ++ "; insAt_i = " ++ show insAt_i ++ "; outs = " ++ show outs
-
   case concat <$> zipWithM (unifyArg fnName) outs insAt_i of
-    Just unifyEgs -> do
+    Just unifyEgs@(x:_) -> do
       debug $ " - can unify: " ++ show unifyEgs
       -- unifyEgs at this point is the set of examples we should add.
       -- we also need to update the existing examples, replacing the thunks with
@@ -524,7 +529,7 @@ synthUnifyOn i args retType fnName = do
                   , egs = egs }
 
       withExamples egs' $ synth fnName' (map snd args) retType
-    Nothing -> fail "couldn't unify"
+    _ -> fail "couldn't unify"
 
 -- e.g. <2 :: (2 :: h [2] 2 [] [])> unifies with 2 :: (2 :: []),
 -- providing the example: h [2] 2 [] [] => [].
@@ -552,7 +557,7 @@ unifyThunk _ _ _ = Nothing
 
 unifyArg :: Ident -> ClosedTerm -> Arg -> Maybe [Example]
 unifyArg i t (Thunk th deps) = unifyThunk i t th
-unifyArg i _ _ = Nothing -- TODO: should this be Just [] ?
+unifyArg i _ _ = Just [] -- TODO: should this be Just [] ?
 
 updateThunkCall :: Ident -> ClosedTerm -> Example -> Example
 updateThunkCall i t (Eg ins out) = Eg (map goArg ins) out
@@ -629,8 +634,14 @@ try :: (MonadFail m, Alternative m, Monoid w) => [RWST r w s m a] -> RWST r w s 
 try [] = fail "exhausted all possibilities"
 try (x:xs) = rwsT $ \r s -> runRWST x r s <|> runRWST (try xs) r s
 
+orElse :: Monoid w => RWST r w s [] a -> RWST r w s [] a -> RWST r w s [] a
+orElse first alt = rwsT $ \r s -> case runRWST first r s of
+  [] -> runRWST alt r s
+  v -> v
+
 assembleBody :: Body -> Expr
 assembleBody (SynthVar x) = Var x
+assembleBody (SynthLiteral v) = assembleTerm v
 assembleBody (SynthConstr con fns) =
   applyMany $ Var con : [ applyManyIdents (n : args)
                         | (n, args) <- fns ]
@@ -647,6 +658,9 @@ assembleBody (SynthRecurse x cases) =
 assembleBody (SynthCall f args) =
   applyMany $ map Var (f : args)
 assembleBody SynthHole = Hole 0
+
+assembleTerm :: ClosedTerm -> Expr
+assembleTerm (ConstrApp c args) = applyMany $ Var c : map assembleTerm args
 
 assembleRecursiveBody :: RecursivePart -> Expr -> Expr
 assembleRecursiveBody (Recurse b recFn recArgs) body
@@ -771,6 +785,9 @@ applyBody params body args = case body of
     SynthVar x ->
       (ThunkTerm $ get x, [])
 
+    SynthLiteral v ->
+      (ThunkTerm v, [])
+
     SynthConstr con calls ->
       let th = ThunkConstr con [ ThunkCall name (map get args) | (name, args) <- calls ]
       in (th, map fst calls)
@@ -809,6 +826,8 @@ applyBody params body args = case body of
         get = getIn (zip params args)
         call f xs = ThunkCall f (map get xs)
 
+-- updates a thunk by applying a provided function where applicable.
+-- the new thunk is returned along with the new list of dependencies introduced.
 updateThunkWith :: Ident -> SynthFunction -> Thunk -> (Thunk, [Ident])
 updateThunkWith fnName fn@(Fn args _ body _) th = case th of
   ThunkConstr s ths ->
@@ -829,10 +848,6 @@ updateThunkWith fnName fn@(Fn args _ body _) th = case th of
       case updateThunkWith fnName fn th' of
         (nonThunk, []) -> (ThunkCall callFn (callArgs ++ [thunkToTerm' nonThunk]), [callFn])
         (th'', deps') -> (ThunkRecLet th'' deps' callFn callArgs, deps')
-      -- this should end up in one of two cases:
-      --  * the application results in a thunk which can be turned into a closed term,
-      --    in which case we can return a ThunkCall and move onto the inner call of callFn
-      --  * further evaluation is required to reach this point
     else
       (th, deps)
 
@@ -1060,20 +1075,28 @@ disjoint xs ys = (xs `intersect` ys, xs \\\ ys)
 traverseContinuation :: Monad m => [a] -> (a -> m [b] -> m [b]) -> m [b]
 traverseContinuation xs f = foldr f (return []) xs
 
-test env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
-  [ Eg [toVal' ([1, 2] :: [Int])] (toClosed' (1 :: Int))
-  , Eg [toVal' ([0, 2, 3] :: [Int])] (toClosed' (0 :: Int)) ]
+instance Show Thunk where
+  show (ThunkConstr "Zero" []) = "0"
+  show (ThunkConstr "Suc" [t]) = case readMaybe (show t) :: Maybe Int of
+    Just n -> show (1 + n)
+    Nothing -> "(Suc " ++ show t ++ ")"
+  show (ThunkConstr "Nil" []) = "[]"
+  show (ThunkConstr "Cons" [l, r]) = "(" ++ show l ++ " :: " ++ show r ++ ")"
+  show (ThunkConstr con []) = con
+  show (ThunkConstr con ts) = "(" ++ con ++ " " ++ unwords (map show ts) ++ ")"
 
-test'' env = synthesiseInEnvironment env "double" (tyInt --> tyList tyInt --> tyList tyInt)
-  [ Eg [toVal' (0 :: Int), toVal' ([1] :: [Int])] (toClosed' ([0, 0, 1] :: [Int]))
-  , Eg [toVal' (2 :: Int), toVal' ([] :: [Int])] (toClosed' ([2, 2] :: [Int])) ]
+  show (ThunkCall f ts) = "(" ++ f ++ " " ++ unwords (map show ts) ++ ")"
+  show (ThunkTerm t) = show t
+  show (ThunkRecLet th deps callFn callArgs) =
+    "let <x> = <" ++ show th ++ " | " ++ unwords deps ++ "> in " ++
+    callFn ++ " " ++ unwords (map show callArgs) ++ " <x>"
 
-test' env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
-  [ Eg [toVal' (0 :: Int)] (toClosed' False)
-  , Eg [toVal' (1 :: Int)] (toClosed' True)
-  , Eg [toVal' (2 :: Int)] (toClosed' False) ]
-
-testStutter env = synthesiseInEnvironment env "stutter" (tyList (TyVar "a") --> tyList (TyVar "a"))
-  [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))
-  --, Eg [toVal' ([1] :: [Int])] (toClosed' ([1, 1] :: [Int]))
-  , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1, 1, 2, 2] :: [Int])) ]
+instance Show ClosedTerm where
+  show (ConstrApp "Zero" []) = "0"
+  show (ConstrApp "Suc" [t]) = case readMaybe (show t) :: Maybe Int of
+    Just n -> show (1 + n)
+    Nothing -> "(Suc " ++ show t ++ ")"
+  show (ConstrApp "Nil" []) = "[]"
+  show (ConstrApp "Cons" [l, r]) = "(" ++ show l ++ " :: " ++ show r ++ ")"
+  show (ConstrApp i []) = i
+  show (ConstrApp i ts) = "(" ++ i ++ " " ++ unwords (map show ts) ++ ")"
