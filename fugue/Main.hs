@@ -85,9 +85,9 @@ handleExpr t = do
 
 perf :: String -> Interactive ()
 perf s = do
-  start <- liftIO $ getCurrentTime
+  start <- liftIO getCurrentTime
   handleInput s
-  end <- liftIO $ getCurrentTime
+  end <- liftIO getCurrentTime
   liftIO $ putStrLn $ "  (finished in " ++ show (diffUTCTime end start) ++ ")"
 
 loadFiles :: [String] -> Interactive ()
@@ -117,7 +117,7 @@ info :: Interactive ()
 info = do
   env <- get
   liftIO $ case types env of
-    [] -> putStrLn $ "  no datatypes defined"
+    [] -> putStrLn "  no datatypes defined"
     dts -> putStrLn $ prettyDataTypes (types env)
 
 checkType :: String -> Interactive ()
@@ -143,7 +143,7 @@ typecheckTerm t = do
   dts <- gets types
   typecheck env dts t ?? TypeErr
 
-testHead env = synthesiseInEnvironment env "head" (tyList tyInt --> tyInt)
+testHead env = synthesiseInEnvironment env "head" (tyList (TyVar "a") --> TyVar "a")
   [ Eg [toVal' ([1, 2] :: [Int])] (toClosed' (1 :: Int))
   , Eg [toVal' ([0, 2, 3] :: [Int])] (toClosed' (0 :: Int)) ]
 
@@ -173,7 +173,7 @@ loadFile file = do
   typecheckProgram p
   
   env <- get
-  case testLength env of
+  case testIsOne env of
     [] -> liftIO $ putStrLn "synthesis failed! :("
     xs -> do
       --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"
