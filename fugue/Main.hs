@@ -172,12 +172,13 @@ loadFile file = do
   p <- parseProgram file s ?? SyntaxErr
   typecheckProgram p
   
+  {-
   env <- get
   case testIsOne env of
     [] -> liftIO $ putStrLn "synthesis failed! :("
     xs -> do
       --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"
-      forM_ (zip [1..] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
+      forM_ (zip [1..3] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
         putStrLn $ "attempt #" ++ show num ++ ", reached depth = " ++ show d ++ ":"
         putStrLn $ "synthesised " ++ show (length fns) ++ " function(s)"
         putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
@@ -187,7 +188,7 @@ loadFile file = do
         getLine
         putStrLn ""
         --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
-        --putStrLn $ "compiled = " ++ show term
+        --putStrLn $ "compiled = " ++ show term -}
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do

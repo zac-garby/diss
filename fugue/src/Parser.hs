@@ -246,7 +246,9 @@ list = between listStart listEnd $ do
 
 tuple :: Parser Expr
 tuple = parens $ do
-  LitTuple <$> sepEndBy expr (keyword ",")
+  vals <- sepEndBy expr (keyword ",")
+  guard $ length vals `elem` [0, 2]
+  return $ LitTuple vals
 
 litInt :: Parser Expr
 litInt = lexeme $ LitInt <$> int
@@ -283,7 +285,13 @@ listType = do
   return $ tyList t
 
 tupleType :: Parser Type
-tupleType = parens $ tyTuple <$> sepEndBy typeExpr (keyword ",")
+tupleType = parens $ do
+  args <- sepEndBy typeExpr (keyword ",")
+  guard $ length args `elem` [0, 2]
+  case args of
+    [] -> return tyUnit
+    [a, b] -> return $ tyPair [a, b]
+    _ -> error "only units and 2-tuples supported"
 
 atomType :: Parser Type
 atomType = choice [listType, try typeVar, try typeConstr, try (parens typeExpr), tupleType]

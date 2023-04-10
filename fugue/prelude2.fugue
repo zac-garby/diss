@@ -4,6 +4,10 @@ data Maybe a = Nothing | Just a;
 
 data Bool = True | False;
 
+data Unit = Unit;
+
+data Pair a b = Pair a b;
+
 (.) : (b -> c) -> (a -> b) -> a -> c;
 (.) f g x = f (g x);
 
@@ -21,6 +25,14 @@ not b = case b of
 (=/=) : a -> a -> Bool;
 (=/=) x y = not (x == y);
 
+fst : Pair a b -> a;
+fst p = case p of
+  Pair a _ -> a;
+
+snd : Pair a b -> b;
+snd p = case p of
+  Pair _ b -> b;
+
 flip : (a -> b -> c) -> b -> a -> c;
 flip f x y = f y x;
 
@@ -33,10 +45,10 @@ const x y = x;
 (||) : Bool -> Bool -> Bool;
 (||) x y = if x then True else y;
 
-curry : ((a, b) -> c) -> a -> b -> c;
+curry : (Pair a b -> c) -> a -> b -> c;
 curry f x y = f (x, y);
 
-uncurry : (a -> b -> c) -> (a, b) -> c;
+uncurry : (a -> b -> c) -> Pair a b -> c;
 uncurry f p = f (fst p) (snd p);
 
 neg : Int -> Int;

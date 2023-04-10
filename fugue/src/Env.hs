@@ -65,16 +65,6 @@ defaultEnv = Environment
             , toTerm chr ))
   , ("ord", ( finalise $ tyChar --> tyInt
             , toTerm ord ))
-  , ("fst", ( finalise $ tyTuple [a, b] --> a
-            , CBuiltin WHNF $ \(CTuple [t, _]) -> t ))
-  , ("snd", ( finalise $ tyTuple [a, b] --> b
-            , CBuiltin WHNF $ \(CTuple [_, t]) -> t ))
-  , ("fst3", ( finalise $ tyTuple [a, b, c] --> a
-             , CBuiltin WHNF $ \(CTuple [t,_,_]) -> t))
-  , ("snd3", ( finalise $ tyTuple [a, b, c] --> b
-             , CBuiltin WHNF $ \(CTuple [_,t,_]) -> t))
-  , ("trd3", ( finalise $ tyTuple [a, b, c] --> c
-             , CBuiltin WHNF $ \(CTuple [_,_,t]) -> t))
   , ("Zero", ( finalise tyInt
              , CConstr "Zero") )
   , ("Suc", ( finalise $ tyInt --> tyInt

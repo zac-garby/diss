@@ -16,7 +16,8 @@ module Types ( GenericType (..)
              , tyBool
              , tyChar
              , tyList
-             , tyTuple
+             , tyPair
+             , tyUnit
              , tyString
              , (-->)
              , finalise
@@ -62,8 +63,11 @@ tyChar = TyConstr "Char" []
 tyList :: Type -> Type
 tyList t = TyConstr "List" [t]
 
-tyTuple :: [Type] -> Type
-tyTuple = TyConstr "Tuple"
+tyPair :: [Type] -> Type
+tyPair = TyConstr "Pair"
+
+tyUnit :: Type
+tyUnit = TyConstr "Unit" []
 
 tyString :: Type
 tyString = tyList tyChar

@@ -135,7 +135,10 @@ infer (LitList xs) = do
 
 infer (LitTuple xs) = do
   ts <- forM xs infer
-  return $ tyTuple ts
+  case ts of
+    [] -> return tyUnit
+    [a, b] -> return $ tyPair ts
+    _ -> error "only units and 2-tuples are supported"
 
 infer (TypeSpec e t) = do
   (te, cs) <- listen $ infer e
@@ -295,7 +298,10 @@ typeAs (LitTuple xs) t = do
     typeAs x tv
     return tv
 
-  lift $ tyTuple ts ~~ t
+  lift $ case ts of
+    [] -> tyUnit ~~ t
+    [a, b] -> tyPair [a, b] ~~ t
+    _ -> error "only units and 2-tuples are supported"
 
 typeAs (App f x) t = do
   tx <- lift fresh

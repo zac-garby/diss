@@ -1,8 +1,22 @@
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-# LANGUAGE PatternSynonyms #-}
+
 module Compiler ( Term (..)
                 , EvalType (..)
                 , CompilerError (..)
                 , Value (..)
                 , Index
+
+                , pattern (:$)
+                , pattern CPair
+                , pattern CCons
+                , pattern CNil
+                , pattern CUnit
+                , pattern CTrue
+                , pattern CFalse
+                , pattern CSuc
+                , pattern CZero
+
                 , list2clist
                 , clist2list
                 , compile ) where
@@ -10,7 +24,7 @@ module Compiler ( Term (..)
 import Data.List
 import Control.Monad
 import Control.Monad.Reader
-import Control.Monad.Except
+import Control.Monad.Except ( Except, MonadError(throwError) )
 import Debug.Trace
 
 import Parser
@@ -30,13 +44,25 @@ data Term = CVar Index
           | CChar Char
           | CConstr Ident
           | CCase Term [(Ident, Term)]
-          | CTuple [Term]
           | CBuiltin EvalType (Term -> Term)
+
+infixl 1 :$
+pattern (:$) a b = CApp a b
+pattern CPair a b = CConstr "Pair" :$ a :$ b
+pattern CCons a b = CConstr "Cons" :$ a :$ b
+pattern CNil = CConstr "Nil"
+pattern CUnit = CConstr "Unit"
+pattern CTrue = CConstr "True"
+pattern CFalse = CConstr "False"
+pattern CSuc a = CConstr "Suc" :$ a
+pattern CZero = CConstr "Zero"
+
+{-# COMPLETE CVar, CAbs, (:$), CFix, CIf, CInt, CChar, CConstr, CCase, CBuiltin #-}
 
 instance Show Term where
   show (CVar i) = show i
   show (CAbs t) = "λ." ++ show t
-  show (CApp f x) = case clist2list (CApp f x) of
+  show (f :$ x) = case clist2list (f :$ x) of
     Just xs -> "[" ++ intercalate ", " (map show xs) ++ "]"
     Nothing -> bracket (show f) ++ bracket (show x)
   show (CFix t) = "fix " ++ show t
@@ -47,7 +73,6 @@ instance Show Term where
   show (CConstr id) = id
   show (CCase t cs) = "case " ++ show t ++ " of [ " ++ intercalate ", " (map showCase cs) ++ " ]"
     where showCase (con, body) = con ++ " -> " ++ show body
-  show (CTuple xs) = "(" ++ intercalate ", " (map show xs) ++ ")"
   show (CBuiltin Full f) = "<builtin>"
   show (CBuiltin WHNF f) = "<builtin (to WHNF)>"
   show (CBuiltin None f) = "<builtin (no eval)>"
@@ -56,8 +81,7 @@ instance Eq Term where
   (CInt x) == (CInt y) = x == y
   (CChar x) == (CChar y) = x == y
   (CConstr x) == (CConstr y) = x == y
-  (CApp x1 v1) == (CApp x2 v2) = x1 == x2 && v1 == v2
-  (CTuple xs) == (CTuple ys) = and $ zipWith (==) xs ys
+  (x1 :$ v1) == (x2 :$ v2) = x1 == x2 && v1 == v2
   _ == _ = False
 
 bracket :: String -> String
@@ -87,7 +111,7 @@ fromExpr (Var v) = do
 fromExpr (App f x) = do
   f' <- fromExpr f
   x' <- fromExpr x
-  return $ CApp f' x'
+  return $ f' :$ x'
 
 fromExpr (Abs v t) = do
   t' <- with v $ fromExpr t
@@ -98,7 +122,7 @@ fromExpr (Let v val body) = fromExpr $ App (Abs v body) val
 fromExpr (LetRec v val body) = do
   body' <- with v $ fromExpr body
   val' <- with v $ fromExpr val
-  return $ CApp (CAbs body') (CFix $ CAbs val')
+  return $ CAbs body' :$ CFix (CAbs val')
 
 fromExpr (If cond t f) = do
   cond' <- fromExpr cond
@@ -122,7 +146,10 @@ fromExpr (LitList xs) = do
 
 fromExpr (LitTuple xs) = do
   xs' <- mapM fromExpr xs
-  return $ CTuple xs'
+  case xs' of
+    [] -> return CUnit
+    [a, b] -> return $ CPair a b
+    _ -> error "only 2-tuples are allowed"
 
 fromExpr (TypeSpec e _) = fromExpr e
 
@@ -135,10 +162,10 @@ list2clist :: [Term] -> Term
 list2clist = foldr (CApp . CApp (CConstr "Cons")) (CConstr "Nil")
 
 clist2list :: Term -> Maybe [Term]
-clist2list (CApp (CApp (CConstr "Cons") h) t) = do
+clist2list (CCons h t) = do
   rest <- clist2list t
   return $ h : rest
-clist2list (CConstr "Nil") = return []
+clist2list CNil = return []
 clist2list _ = Nothing
 
 class Value a where
@@ -152,8 +179,8 @@ instance Value Int where
 instance Value Bool where
   toTerm b = CConstr (show b)
 
-  fromTerm (CConstr "True") = True
-  fromTerm (CConstr "False") = False
+  fromTerm CTrue = True
+  fromTerm CFalse = False
 
 instance Value Char where
   toTerm c = CChar c
@@ -162,19 +189,19 @@ instance Value Char where
 instance Value a => Value [a] where
   toTerm xs = list2clist (map toTerm xs)
 
-  fromTerm (CApp (CApp (CConstr "Cons") h) t) = fromTerm h : fromTerm t
-  fromTerm (CConstr "Nil") = []
+  fromTerm (CCons h t) = fromTerm h : fromTerm t
+  fromTerm CNil = []
 
 instance (Value a, Value b) => Value (a -> b) where
   toTerm f = CBuiltin Full $ \t -> toTerm (f (fromTerm t))
-  fromTerm (CBuiltin _ f) = \a -> fromTerm (f (toTerm a))
+  fromTerm (CBuiltin _ f) = fromTerm . f . toTerm
 
 instance Value () where
-  toTerm () = CTuple []
+  toTerm () = CConstr "Unit"
   fromTerm _ = ()
 
 instance (Value a, Value b) => Value (a, b) where
-  toTerm (a, b) = CTuple [toTerm a, toTerm b]
-  fromTerm (CTuple [a, b]) = (fromTerm a, fromTerm b)
+  toTerm (a, b) = CPair (toTerm a) (toTerm b)
+  fromTerm (CPair a b) = (fromTerm a, fromTerm b)
 
 -- ...
