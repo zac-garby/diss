@@ -49,7 +49,6 @@ bracketExpr ex = prettyExpr ex
 prettyTerm :: Term -> Maybe String
 prettyTerm (CInt i) = Just $ colour 32 (show i)
 prettyTerm (CChar c) = Just $ colour 32 (show c)
-prettyTerm (CConstr c) = Just $ colour 32 c
 prettyTerm c@(CCons (CChar _) _) = do
   cs <- clist2list c
   return $ colour 32 ("\"" ++ map (\(CChar c) -> c) cs ++ "\"")
@@ -57,6 +56,7 @@ prettyTerm c@(CCons h t) = do
   ts <- clist2list c
   strings <- mapM prettyTerm ts
   return $ "[" ++ intercalate ", " strings ++ "]"
+prettyTerm (CConstr c) = Just $ colour 32 c
 prettyTerm (fn :$ arg) = do
   fn' <- prettyTerm fn
   arg' <- bracketTerm arg

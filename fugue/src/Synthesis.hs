@@ -54,11 +54,19 @@ data SynthState = SynthState
   deriving Show
 
 data SynthFunction = Fn
-  { args :: [(Ident, Type)]
+  { args :: [(Ident, ArgInfo)]
   , ret :: Type
   , body :: Body
   , egs :: [Example] }
   deriving Show
+
+data ArgInfo = ArgInfo
+  { argType :: Type
+  , maySplitArg :: Bool }
+  deriving Show
+
+instance Eq ArgInfo where
+  a == b = argType a == argType b
 
 instance Eq SynthFunction where
   (Fn args _ body _) == (Fn args' _ body' _) = args == args' && body == body'
@@ -131,7 +139,7 @@ instance Eq SynthResult where
 
 type Synth = RWST Context SynthFunctions SynthState []
 
-type SynthImpl = [(Ident, Type)] -> Type -> Ident -> Synth SynthFunction
+type SynthImpl = [(Ident, ArgInfo)] -> Type -> Ident -> Synth SynthFunction
 
 synthesiseInEnvironment ::
      Environment
@@ -156,7 +164,8 @@ synthesise env dts fnName goal egs = do
   where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts
                       , mayUseHomoRule = False, homoAvoidance = 3, noEgsAvoidance = 1 }
         defaultState = SynthState { newNames = allVars, maxDepth = 0 }
-        problem = uncurry (upToDepth 16 ... synth fnName) (unfoldFnTy goal)
+        (goalArgs, goalRet) = unfoldFnTy goal
+        problem = (upToDepth 16 ... synth fnName) [ ArgInfo t True | t <- goalArgs ] goalRet
 
 runSynth :: SynthState -> Context -> Synth a -> [(a, SynthState, SynthFunctions)]
 runSynth s c p = runRWST p c s
@@ -172,7 +181,7 @@ upToDepth toDepth f = do
 -- synthesises a function of the given argument and return types, and
 -- defines it in the Writer under a given identifier. also returns the
 -- function for convenience
-synth :: Ident -> [Type] -> Type -> Synth SynthFunction
+synth :: Ident -> [ArgInfo] -> Type -> Synth SynthFunction
 synth name argTypes ret = do
   d <- asks depth
   dMax <- gets maxDepth
@@ -246,7 +255,7 @@ synthTrivial = eachArg "trivial" $ \i args retType fnName -> do
 
   -- synth trivial only applies when the type of the argument under inspection
   -- can be unified with the required return type.
-  let (argName, argTy) = args !! i
+  let (argName, ArgInfo argTy _) = args !! i
   guard $ argTy <= retType
 
   debug "done: synth trivial"
@@ -326,7 +335,8 @@ synthSplit = eachArg "case split" $ \splitOn args retType fnName -> do
   -- we cannot split on an argument which is not fully evaluated
   guard (not (argIsThunk splitOn egs))
 
-  let (splitArg, splitTy) = args !! splitOn
+  let (splitArg, ArgInfo splitTy maySplit) = args !! splitOn
+  guard maySplit
   case splitTy of
     TyConstr dtName dtArgs -> case lookup dtName dts of
       Just (DataType tyArgs dtConstrs) -> do
@@ -343,7 +353,7 @@ synthSplit = eachArg "case split" $ \splitOn args retType fnName -> do
           -- find the examples which use the appropriate constructor for this branch,
           -- and update them (give them the deconstructed arguments as well as their
           -- existing parameters)
-          let allArgs = args ++ constructorArgs
+          let allArgs = args ++ [ (i, ArgInfo t True) | (i, t) <- constructorArgs ]
 
           -- make a new function name to synthesise this case inside
           caseFnName <- fresh
@@ -383,6 +393,8 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
   egs <- asks examples
   dts <- asks dataTypes
   fs <- asks fns
+  d <- asks depth
+  m <- gets maxDepth
 
   -- we cannot split on an argument which is not fully evaluated. all example arguments
   -- must be fully evaluated values, for simplicity. strictly speaking, only the argument
@@ -390,18 +402,31 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
   -- split when there is already a thunk so we ignore these cases.
   guard $ not (egHasThunk egs)
 
-  let (splitArg, splitTy) = args !! splitOn
+  debug $ "trying recurse on arg: " ++ show splitOn
+
+  -- the possible functions to recurse on are:
+  --  * the current function being synthesised
+  --  * plus, the previous x functions that were defined
+  --    (where x = remaining_depth - 1)
+  --    i.e. if depth = 4 and maxDepth = 5, no other functions will be considered
+  let possibleRecFns = fnName : take (m - d - 1) (map fst fs)
+
+  let (splitArg, ArgInfo splitTy maySplit) = args !! splitOn
+  guard maySplit
+
   case splitTy of
     TyConstr dtName dtArgs -> case lookup dtName dts of
       Just (DataType tyArgs dtConstrs) -> do
         let s = zip tyArgs dtArgs :: Subst
             concreteConstructors = [ DataConstructor i (map (sub s) ts)
                                    | DataConstructor i ts <- dtConstrs ]
-        
+
         guard $ not (null concreteConstructors)
 
+        debug $ fnName ++ ": recursion will be attempted on: " ++ show possibleRecFns
         -- attempt to recurse on this function, as well as all previously defined functions
-        forEach (fnName : map fst fs) $ \f -> do
+        forEach possibleRecFns $ \f -> do
+          debug $ "attempting recursion on: " ++ f
           -- for each constructor in the datatype, see if we can find recursive arguments
           -- consisting of parts of the constructor. either way, keep track of whether or
           -- not we want to recurse for this case, and store all relevant info/names for
@@ -417,16 +442,18 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
             -- right now, the first usable constructor argument is selected. this is not
             -- always optimal (e.g. in the case of trees), so this should be changed in
             -- the future to attempt synthesis on each one in turn.
-            let recursiveArgs = forM args $ \(_, t) -> chooseRecursiveArg t constructorArgs
-                allArgs = args ++ constructorArgs
+            let recursiveArgs = forM args $ \(_, ArgInfo t _) -> chooseRecursiveArg t constructorArgs
+                args' = [ (n, ArgInfo t (i /= splitOn && sp))
+                        | (i, (n, ArgInfo t sp)) <- zip [0..] args ]
+                allArgs = args' ++ [ (i, ArgInfo t True) | (i, t) <- constructorArgs ]
                 constructorParams = map fst constructorArgs
 
             let (recursivePart, bodyArgs) =
                   case recursiveArgs of
                     Nothing -> (NoRecurse, allArgs)
                     Just recursiveArgs ->
-                      let allArgs' = allArgs ++ [(recursiveCallName, retType)]
-                      in (Recurse recursiveCallName fnName recursiveArgs, allArgs')
+                      let allArgs' = allArgs ++ [(recursiveCallName, ArgInfo retType False)]
+                      in (Recurse recursiveCallName f recursiveArgs, allArgs')
 
             return (caseFnName, allArgs, recursivePart, con, constructorParams, bodyArgs)
 
@@ -451,19 +478,19 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
               e <- asks env
 
               fn <- case recursivePart of
-                Recurse recCall fnName recParams -> do
+                Recurse recCall recFnName recParams -> do
                   -- when a recursive call is made, we need to construct a thunk to pass as
                   -- an example to the sub-function.
-                  let fnType = finalise $ foldr (-->) retType (map snd allArgs ++ [retType])
+                  let fnType = finalise $ foldr (-->) retType (map (argType . snd) allArgs ++ [retType])
                       lookupArg args name = fromJust $ lookup name args
                       examples = [ Eg (ins ++ map Val conArgs ++ [thunk]) out
-                                | Eg ins out <- egs
-                                , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
-                                , con == con'
-                                , let recArgs = map (lookupArg (zip conParams conArgs)) recParams
-                                , let thunk = Thunk (ThunkCall fnName recArgs) [fnName] ]
+                                 | Eg ins out <- egs
+                                 , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
+                                 , con == con'
+                                 , let recArgs = map (lookupArg (zip conParams conArgs)) recParams
+                                 , let thunk = Thunk (ThunkCall recFnName recArgs) [recFnName] ]
 
-                  withExamples examples $ synth caseFnName (map snd allArgs ++ [retType]) retType
+                  withExamples examples $ synth caseFnName (map snd allArgs ++ [ArgInfo retType False]) retType
 
                 NoRecurse -> do
                   let examples = [ Eg (ins ++ map Val conArgs) out
@@ -563,7 +590,7 @@ replaceThunkCall f t (ThunkRecLet th deps fn fnArgs) = error "replaceThunkCall n
 replaceThunkCall f t (ThunkTerm t') = ThunkTerm t'
 
 debug :: String -> Synth ()
-debug _ = return ()
+-- debug _ = return ()
 debug s = do
   d <- asks depth
   let prefix = concat (replicate d "* ")
@@ -592,7 +619,7 @@ egHasThunk :: [Example] -> Bool
 egHasThunk [] = False
 egHasThunk ((Eg args _):rest) = any isThunk args || egHasThunk rest
 
-withSynth :: Ident -> [Type] -> Type -> Synth a -> Synth a
+withSynth :: Ident -> [ArgInfo] -> Type -> Synth a -> Synth a
 withSynth name args ret s = do
   fn <- synth name args ret
   withFunction name fn s
@@ -657,18 +684,19 @@ assembleTerm (ConstrApp c args) = applyMany $ Var c : map assembleTerm args
 
 assembleRecursiveBody :: RecursivePart -> Expr -> Expr
 assembleRecursiveBody (Recurse b recFn recArgs) body
-  = LetRec b (applyManyIdents (recFn : recArgs)) body
+  = Let b (applyManyIdents (recFn : recArgs)) body
 assembleRecursiveBody NoRecurse body = body
 
 assemble :: SynthFunction -> Expr
 assemble (Fn args _ body _) = foldr (Abs . fst) (assembleBody body) args
 
 assembleFn :: SynthFunction -> Function
-assembleFn (Fn args ret body egs) = Function args ret (assembleBody body) egs
+assembleFn (Fn args ret body egs) =
+  Function [ (i, t) | (i, ArgInfo t _) <- args] ret (assembleBody body) egs
 
 getType :: SynthFunction -> Scheme
 getType (Fn args ret _ _) =
-  let argTypes = map snd args
+  let argTypes = map (argType . snd) args
   in finalise $ foldr (-->) ret argTypes
 
 fresh :: Synth Ident
