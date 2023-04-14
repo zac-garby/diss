@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Synthesis
   ( Context (..)
@@ -24,6 +25,7 @@ module Synthesis
 
 import Data.Maybe
 import Data.List
+import Data.Functor
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Trans.RWS.CPS
@@ -63,9 +65,12 @@ data SynthFunction = Fn
 data ArgInfo = ArgInfo
   { argType :: Type
   , maySplitArg :: Bool }
-  deriving Show
+
+instance Show ArgInfo where
+  show a = show (argType a)
 
 instance Eq ArgInfo where
+  (==) :: ArgInfo -> ArgInfo -> Bool
   a == b = argType a == argType b
 
 instance Eq SynthFunction where
@@ -191,7 +196,7 @@ synth name argTypes ret = do
   avoid <- asks noEgsAvoidance
 
   debug $ "* synthesising " ++ name ++ " : "
-    ++ intercalate " -> " (map show argTypes)
+    ++ intercalate " -> " (map (show . argType) argTypes)
     ++ " -> " ++ show ret ++ " with fns: " ++ unwords (map fst fns)
     ++ " and " ++ show (length egs) ++ " examples:"
 
@@ -424,14 +429,16 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
         guard $ not (null concreteConstructors)
 
         debug $ fnName ++ ": recursion will be attempted on: " ++ show possibleRecFns
-        -- attempt to recurse on this function, as well as all previously defined functions
+        -- attempt to recurse on this function, as well as all previously defined functions.
+        -- TODO: various things need to be updated to account for this, for example retType in
+        -- possibleRecursiveArgs.
         forEach possibleRecFns $ \f -> do
           debug $ "attempting recursion on: " ++ f
           -- for each constructor in the datatype, see if we can find recursive arguments
           -- consisting of parts of the constructor. either way, keep track of whether or
           -- not we want to recurse for this case, and store all relevant info/names for
           -- later synthesis.
-          cases <- forM concreteConstructors $ \(DataConstructor con constructorArgTypes) -> do
+          possibleCases <- forM concreteConstructors $ \(DataConstructor con constructorArgTypes) -> do
             constructorArgs <- forM constructorArgTypes $ \ty -> do
               name <- fresh
               return (name, ty)
@@ -439,78 +446,87 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
             caseFnName <- fresh
             recursiveCallName <- fresh
 
-            -- right now, the first usable constructor argument is selected. this is not
-            -- always optimal (e.g. in the case of trees), so this should be changed in
-            -- the future to attempt synthesis on each one in turn.
-            let recursiveArgs = forM args $ \(_, ArgInfo t _) -> chooseRecursiveArg t constructorArgs
-                args' = [ (n, ArgInfo t (i /= splitOn && sp))
+            let possibleRecArgs = forM args $ \(_, ArgInfo t _) ->
+                  possibleRecursiveArgs t constructorArgs
+            
+            debug $ "for " ++ con ++ ", possibleRecArgs = " ++ show possibleRecArgs
+
+            -- let recursiveArgs = forM args $ \(_, ArgInfo t _) -> chooseRecursiveArg t constructorArgs
+            let args' = [ (n, ArgInfo t (i /= splitOn && sp))
                         | (i, (n, ArgInfo t sp)) <- zip [0..] args ]
                 allArgs = args' ++ [ (i, ArgInfo t True) | (i, t) <- constructorArgs ]
                 constructorParams = map fst constructorArgs
 
-            let (recursivePart, bodyArgs) =
-                  case recursiveArgs of
-                    Nothing -> (NoRecurse, allArgs)
-                    Just recursiveArgs ->
-                      let allArgs' = allArgs ++ [(recursiveCallName, ArgInfo retType False)]
-                      in (Recurse recursiveCallName f recursiveArgs, allArgs')
+            let r = case possibleRecArgs of
+                  [] -> [(NoRecurse, allArgs)]
+                  possibleRecursiveArgs -> possibleRecursiveArgs <&> \recursiveArgs ->
+                    let allArgs' = allArgs ++ [(recursiveCallName, ArgInfo retType False)]
+                    in (Recurse recursiveCallName f recursiveArgs, allArgs')
 
-            return (caseFnName, allArgs, recursivePart, con, constructorParams, bodyArgs)
+            return [ (caseFnName, allArgs, recursivePart, con, constructorParams, bodyArgs)
+                   | (recursivePart, bodyArgs) <- r ]
+          
+          debug $ "all possible cases:" ++ show (zip concreteConstructors possibleCases)
 
-          -- the body of the entire recursive function being synthesised here is a case
-          -- split, where each case either performs a recursive call or doesn't.
-          let fnBody = SynthRecurse splitArg
-                [ (constrName, conArgs, recursivePart, caseFnName, map fst bodyArgs)
-                | (caseFnName, allArgs, recursivePart, constrName, conArgs, bodyArgs) <- cases
-                , let fnArgs = map fst bodyArgs ]
+          forEach (transpose possibleCases) $ \cases -> do
+            debug $ "trying cases: " ++ show cases
+            -- the body of the entire recursive function being synthesised here is a case
+            -- split, where each case either performs a recursive call or doesn't.
+            let fnBody = SynthRecurse splitArg
+                  [ (constrName, conArgs, recursivePart, caseFnName, map fst bodyArgs)
+                  | (caseFnName, allArgs, recursivePart, constrName, conArgs, bodyArgs) <- cases
+                  , let fnArgs = map fst bodyArgs ]
 
-          let fn = Fn { args = args
-                      , ret = retType
-                      , body = fnBody
-                      , egs = egs }
+            let fn = Fn { args = args
+                        , ret = retType
+                        , body = fnBody
+                        , egs = egs }
 
-          debug $ "recursive body = " ++ show fnBody
+            debug $ "recursive body = " ++ show fnBody
 
-          -- with this function (the recursive one being defined - "fnName") temporarily added
-          -- to the namespace, we synthesise each case in turn.
-          withFunction fnName fn $
-            traverseContinuation cases $ \(caseFnName, allArgs, recursivePart, con, conParams, _) c -> do
-              e <- asks env
+            -- with this function (the recursive one being defined - "fnName") temporarily added
+            -- to the namespace, we synthesise each case in turn.
+            withFunction fnName fn $
+              traverseContinuation cases $ \(caseFnName, allArgs, recursivePart, con, conParams, _) c -> do
+                e <- asks env
 
-              fn <- case recursivePart of
-                Recurse recCall recFnName recParams -> do
-                  -- when a recursive call is made, we need to construct a thunk to pass as
-                  -- an example to the sub-function.
-                  let fnType = finalise $ foldr (-->) retType (map (argType . snd) allArgs ++ [retType])
-                      lookupArg args name = fromJust $ lookup name args
-                      examples = [ Eg (ins ++ map Val conArgs ++ [thunk]) out
-                                 | Eg ins out <- egs
-                                 , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
-                                 , con == con'
-                                 , let recArgs = map (lookupArg (zip conParams conArgs)) recParams
-                                 , let thunk = Thunk (ThunkCall recFnName recArgs) [recFnName] ]
+                fn <- case recursivePart of
+                  Recurse recCall recFnName recParams -> do
+                    -- when a recursive call is made, we need to construct a thunk to pass as
+                    -- an example to the sub-function.
+                    let fnType = finalise $ foldr (-->) retType (map (argType . snd) allArgs ++ [retType])
+                        lookupArg args name = fromJust $ lookup name args
+                        examples = [ Eg (ins ++ map Val conArgs ++ [thunk]) out
+                                   | Eg ins out <- egs
+                                   , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
+                                   , con == con'
+                                   , let recArgs = map (lookupArg (zip conParams conArgs)) recParams
+                                   , let thunk = Thunk (ThunkCall recFnName recArgs) [recFnName] ]
 
-                  withExamples examples $ synth caseFnName (map snd allArgs ++ [ArgInfo retType False]) retType
+                    withExamples examples $ synth caseFnName (map snd allArgs ++ [ArgInfo retType False]) retType
 
-                NoRecurse -> do
-                  let examples = [ Eg (ins ++ map Val conArgs) out
-                                | Eg ins out <- egs
-                                , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
-                                , con == con' ]
+                  NoRecurse -> do
+                    let examples = [ Eg (ins ++ map Val conArgs) out
+                                  | Eg ins out <- egs
+                                  , let (con', conArgs) = deconstruct' (fromVal (ins !! splitOn))
+                                  , con == con' ]
 
-                  local (\c -> c { mayUseHomoRule = True }) $
-                    withExamples examples $ synth caseFnName (map snd allArgs) retType
+                    local (\c -> c { mayUseHomoRule = True }) $
+                      withExamples examples $ synth caseFnName (map snd allArgs) retType
 
-              withFunction caseFnName fn c
+                withFunction caseFnName fn c
 
-          debug $ "done: recurse on arg " ++ show splitOn
-          return fn
+            debug $ "done: recurse on arg " ++ show splitOn
+            return fn
 
       Nothing -> fail "non-datatype or undefined"
     _nonADT -> fail "can't recurse on non-ADT"
 
 chooseRecursiveArg :: Type -> [(Ident, Type)] -> Maybe Ident
 chooseRecursiveArg t consArgs = fst <$> find (\(_, t') -> t == t') consArgs
+
+possibleRecursiveArgs :: Type -> [(Ident, Type)] -> [Ident]
+possibleRecursiveArgs t args = fst <$> filter (\(_, t') -> t == t') args
 
 synthUnify :: SynthImpl
 synthUnify = eachArg "unify" $ \i args retType fnName -> do
@@ -590,11 +606,11 @@ replaceThunkCall f t (ThunkRecLet th deps fn fnArgs) = error "replaceThunkCall n
 replaceThunkCall f t (ThunkTerm t') = ThunkTerm t'
 
 debug :: String -> Synth ()
--- debug _ = return ()
-debug s = do
-  d <- asks depth
-  let prefix = concat (replicate d "* ")
-  traceM $ prefix ++ s
+debug _ = return ()
+-- debug s = do
+--   d <- asks depth
+--   let prefix = concat (replicate d "* ")
+--   traceM $ prefix ++ s
 
 hasVal :: Arg -> ClosedTerm -> Bool
 hasVal (Val v) t = v == t
@@ -821,8 +837,9 @@ applyBody params body args = case body of
           allArgs = zip (params ++ conParams) (args ++ conArgs)
       in case recPart of
         Recurse recBinding recCall recArgs ->
-          let recArgVals = map (getIn allArgs) recArgs
-              fnArgVals = map (getIn allArgs) (init fnArgs)
+          let allArgs' = allArgs ++ zip conParams conArgs
+              recArgVals = map (getIn allArgs') recArgs
+              fnArgVals = map (getIn allArgs') (init fnArgs)
               th = ThunkRecLet (ThunkCall recCall recArgVals) [recCall] fnName fnArgVals
           in (th, [recCall])
         NoRecurse ->
@@ -835,7 +852,7 @@ applyBody params body args = case body of
     SynthHole -> error "attempted to apply a function which is undefined (i.e. a hole)"
   where getIn as x = case lookup x as of
           Just v -> v
-          Nothing -> error $ "getIn: couldn't find " ++ x ++ " in " ++ show (map fst as)
+          Nothing -> error $ "getIn (" ++ show body ++ "): couldn't find " ++ x ++ " in " ++ show as
         get = getIn (zip params args)
         call f xs = ThunkCall f (map get xs)
 
