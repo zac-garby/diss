@@ -414,7 +414,7 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
   --  * plus, the previous x functions that were defined
   --    (where x = remaining_depth - 1)
   --    i.e. if depth = 4 and maxDepth = 5, no other functions will be considered
-  let possibleRecFns = fnName : take (m - d - 1) (map fst fs)
+  let possibleRecFns = [fnName]-- : take (m - d - 1) (map fst fs)
 
   let (splitArg, ArgInfo splitTy maySplit) = args !! splitOn
   guard maySplit
@@ -432,7 +432,7 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
         -- attempt to recurse on this function, as well as all previously defined functions.
         -- TODO: various things need to be updated to account for this, for example retType in
         -- possibleRecursiveArgs.
-        forEach possibleRecFns $ \f -> do
+        forEach possibleRecFns $ \f -> do 
           debug $ "attempting recursion on: " ++ f
           -- for each constructor in the datatype, see if we can find recursive arguments
           -- consisting of parts of the constructor. either way, keep track of whether or
