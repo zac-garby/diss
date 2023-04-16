@@ -8,6 +8,8 @@ data Unit = Unit;
 
 data Pair a b = Pair a b;
 
+data Tree a = Leaf a | Node (Tree a) (Tree a);
+
 (.) : (b -> c) -> (a -> b) -> a -> c;
 (.) f g x = f (g x);
 

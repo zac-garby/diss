@@ -126,3 +126,34 @@ i xs y ys l = l
     - disallow recursive calls with no recursion (or transform into regular `case`)
     - remove unused arguments in all but the root function
 -}
+
+
+
+
+zip : [a] -> [b] -> [Pair a b]
+    { [], [] -> []
+    , [1, 2], [3, 4] -> [Pair 1 3, Pair 2 4] }
+zip xs ys = case xs of
+    [] -> []
+    Cons x xs' -> f xs ys x xs'
+
+f : [a] -> [b] -> a -> [a] -> [Pair a b]
+    { [1, 2], [3, 4], 1, [2] -> [Pair 1 3, Pair 2 4] }
+f xs ys x xs' = case ys of
+    [] -> ?
+    Cons y ys' -> let r = zip xs' ys'
+                  in Cons (Pair x y) r
+
+
+{-
+Two things need to be done:
+
+ * Allow recursion on previously defined functions, in this case f should recurse on zip
+ * Allow function arguments, as well as constructor arguments, to be used as recursion arguments
+   - Probably will have to disallow some, e.g. disallow function args which have been matched on.
+
+Also TODO:
+
+ * Better unwinding of functions (non-root recursive functions seemingly prevent any child functions
+   from being unwound).
+-}
