@@ -79,12 +79,13 @@ prettyExprImg e = case e of
         kw = V.string (V.defAttr `V.withForeColor` V.white `V.withStyle` V.bold)
         con = V.string (V.defAttr `V.withForeColor` V.brightGreen `V.withStyle` V.bold)
         space = white " "
-        paren i = white "(" <|> i <|> white ")"
+        paren i = white "(" <|> i <|> V.translateY (V.imageHeight i - 1) (white ")")
         a <||> b = a <|> space <|> b
         ex = prettyExprImg
 
         bracketExprImg e@(App f x) = paren (ex e)
         bracketExprImg e@(TypeSpec e' t) = paren (ex e)
+        bracketExprImg e@(Case cond cases) = paren (ex e)
         bracketExprImg e = ex e
 
 -- a pretty-printer for terms.
