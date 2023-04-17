@@ -6,11 +6,15 @@ module Pretty ( prettyExpr
               , prettyTypes
               , prettyDataTypes
               , prettyFunction
+              , prettyFunctionImg
               , prettyExample ) where
+
+import qualified Graphics.Vty as V
 
 import Data.List
 import Data.Char
 import Data.Maybe
+import Graphics.Vty ((<|>), (<->))
 
 import Compiler
 import Types
@@ -43,6 +47,45 @@ bracketExpr ex@(App f x) = "(" ++ prettyExpr ex ++ ")"
 bracketExpr ex@(TypeSpec e t) = "(" ++ prettyExpr ex ++ ")"
 bracketExpr ex@(Case cond cases) = "(" ++ prettyExpr ex ++ ")"
 bracketExpr ex = prettyExpr ex
+
+prettyExprImg :: Expr -> V.Image
+prettyExprImg e = case e of
+  Var i -> if isUpper (head i) then con i else white i
+  App f x -> ex f <||> bracketExprImg x
+  Abs x b -> kw "λ" <|> white x <||> kw "." <||> ex b
+  Let x v b -> (kw "let" <||> white x) <-> (kw "in" <||> ex b)
+  LetRec x v b -> (kw "let rec" <||> white x) <-> (kw "in" <||> ex b)
+  If c t f -> V.vertCat [ kw "if" <||> ex c <||> kw "then"
+                        ,   V.translateX 2 (ex t)
+                        , kw "else"
+                        ,   V.translateX 2 (ex f) ]
+  Case c cases -> V.vertCat $ (kw "case" <||> ex c <||> kw "of")
+                            : [ V.translateX 2 $ con constr
+                                <|> if null args then
+                                      white ""
+                                    else
+                                      space <|> V.horizCat (intersperse space (map white args))
+                                <||> kw "→"
+                                <||> ex body
+                              | (constr, args, body) <- cases ]
+  LitInt n -> lit (show n)
+  LitList exs -> kw "[" <||> V.horizCat (intersperse (kw ", ") (map ex exs)) <||> kw "]"
+  LitTuple exs -> kw "(" <||> V.horizCat (intersperse (kw ", ") (map ex exs)) <||> kw ")"
+  LitChar c -> lit (show c)
+  TypeSpec e t -> bracketExprImg e <||> kw ":" <||> white (prettyType t)
+  Hole _ -> V.string (V.defAttr `V.withForeColor` V.black `V.withBackColor` V.brightRed) " ? " <|> white ""
+  where white = V.string (V.defAttr `V.withForeColor` V.brightWhite)
+        lit = V.string (V.defAttr `V.withForeColor` V.brightBlue)
+        kw = V.string (V.defAttr `V.withForeColor` V.white `V.withStyle` V.bold)
+        con = V.string (V.defAttr `V.withForeColor` V.brightGreen `V.withStyle` V.bold)
+        space = white " "
+        paren i = white "(" <|> i <|> white ")"
+        a <||> b = a <|> space <|> b
+        ex = prettyExprImg
+
+        bracketExprImg e@(App f x) = paren (ex e)
+        bracketExprImg e@(TypeSpec e' t) = paren (ex e)
+        bracketExprImg e = ex e
 
 -- a pretty-printer for terms.
 -- if the term is not designed to be user-visible, Nothing is returned
@@ -109,6 +152,16 @@ prettyFunction :: Ident -> Function -> String
 prettyFunction name (Function args ret body egs) =
   name ++ " : " ++ intercalate " -> " (map prettyType (map snd args ++ [ret])) ++ "\n"
     ++ name ++ " " ++ unwords (map fst args) ++ " = " ++ prettyExpr body
+
+prettyFunctionImg :: Ident -> Function -> V.Image
+prettyFunctionImg name (Function args ret body egs) =
+  V.vertCat [ green name <|> grey " : " <|> ty
+            , green name <|> grey " = " <|> prettyExprImg body ]
+
+  where white = V.string (V.defAttr `V.withForeColor` V.brightWhite)
+        grey = V.string (V.defAttr `V.withForeColor` V.white)
+        green = V.string (V.defAttr `V.withForeColor` V.brightGreen)
+        ty = V.horizCat $ intersperse (grey " → ") (map (white . prettyType) (map snd args ++ [ret]))
 
 prettyExample :: Example -> String
 prettyExample (Eg args ret) = intercalate ", " (map prettyEgArg args) ++ " => " ++ show ret

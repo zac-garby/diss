@@ -246,7 +246,7 @@ renderSynthesiser = do
                 res ->
                   [ white ("result #" ++ show i) <-> V.translateX 2 fnsImg <-> white (replicate 64 ' ')
                   | (i, SynthResult root fns depthUsed) <- zip [1..] res
-                  , let fnImgs = map (V.vertCat . (map white . lines . uncurry prettyFunction)) fns
+                  , let fnImgs = map (uncurry prettyFunctionImg) fns
                   , let fnsImg = V.vertCat fnImgs ]
       pic = V.picForImage (V.pad 8 4 8 4 $ V.vertCat theLines)
 
