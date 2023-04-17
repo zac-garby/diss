@@ -61,10 +61,10 @@ prettyExprImg e = case e of
                         ,   V.translateX 2 (ex f) ]
   Case c cases -> V.vertCat $ (kw "case" <||> ex c <||> kw "of")
                             : [ V.translateX 2 $ con constr
-                                <|> if null args then
+                                <|> (if null args then
                                       white ""
                                     else
-                                      space <|> V.horizCat (intersperse space (map white args))
+                                      space <|> V.horizCat (intersperse space (map white args)))
                                 <||> kw "→"
                                 <||> ex body
                               | (constr, args, body) <- cases ]
@@ -157,12 +157,16 @@ prettyFunction name (Function args ret body egs) =
 prettyFunctionImg :: Ident -> Function -> V.Image
 prettyFunctionImg name (Function args ret body egs) =
   V.vertCat [ green name <|> grey " : " <|> ty
-            , green name <|> grey " = " <|> prettyExprImg body ]
+            , green name <|> argImg <|> grey " = " <|> prettyExprImg body ]
 
   where white = V.string (V.defAttr `V.withForeColor` V.brightWhite)
         grey = V.string (V.defAttr `V.withForeColor` V.white)
         green = V.string (V.defAttr `V.withForeColor` V.brightGreen)
         ty = V.horizCat $ intersperse (grey " → ") (map (white . prettyType) (map snd args ++ [ret]))
+        argImg = if null args then
+            white ""
+          else
+            grey " " <|> V.horizCat (intersperse (white " ") (map (green . fst) args))
 
 prettyExample :: Example -> String
 prettyExample (Eg args ret) = intercalate ", " (map prettyEgArg args) ++ " => " ++ show ret

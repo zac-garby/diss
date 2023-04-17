@@ -233,9 +233,15 @@ renderSynthesiser = do
            ++ [ green f <|> white " : " <|> white (show t) ]
            ++ [ grey start <|> V.horizCat (intersperse inSep ins') <|> arrow <|> out' <|> grey end
               | (j, (ins, out), (insP, outP)) <- zip3 [0..] egs parsed
-              , let ins' = [ pad (if (i, j) == (col, row) then inputSel inp else maybe (inputNoParse inp) (inputBox . fromMaybe "..." . prettyTerm) inpP) l
+              , let ins' = [ pad (if (i, j) == (col, row) then
+                                    inputSel inp
+                                  else
+                                    maybe (inputNoParse inp) (inputBox . fromMaybe "..." . prettyTerm) inpP) l
                            | (i, inp, inpP, l) <- zip4 [0..] ins insP maxWidths ]
-              , let out' = if (j, col) == (row, numIns) then inputSel out else maybe (inputNoParse out) (inputBox . fromMaybe "..." . prettyTerm) outP
+              , let out' = if (j, col) == (row, numIns) then
+                             inputSel out
+                           else
+                             maybe (inputNoParse out) (inputBox . fromMaybe "..." . prettyTerm) outP
               , let start = if j == 0 then "{ " else ", "
               , let end = if j + 1 == length egs then " }" else "" ]
            ++ [ white (replicate 32 '━') ]
@@ -246,8 +252,8 @@ renderSynthesiser = do
                 res ->
                   [ white ("result #" ++ show i) <-> V.translateX 2 fnsImg <-> white (replicate 64 ' ')
                   | (i, SynthResult root fns depthUsed) <- zip [1..] res
-                  , let fnImgs = map (uncurry prettyFunctionImg) fns
-                  , let fnsImg = V.vertCat fnImgs ]
+                  , let fnImgs = map (uncurry prettyFunctionImg) (reverse fns)
+                  , let fnsImg = V.vertCat (intersperse inSep fnImgs) ]
       pic = V.picForImage (V.pad 8 4 8 4 $ V.vertCat theLines)
 
   return pic
