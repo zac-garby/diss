@@ -39,6 +39,7 @@ import Env ( fromEnvironment, Environment(types) )
 import Infer
 import Text.Read
 import Control.Applicative
+import Data.Bifunctor (bimap, second, first)
 
 data Context = Context
   { examples :: [Example]
@@ -162,9 +163,10 @@ synthesise ::
   -> [Example]
   -> [SynthResult]
 synthesise env dts fnName goal egs = do
-  (fn, st, fns) <- runSynth defaultState ctx problem
-  let fns' = removeFnsUnusedBy fnName (unwindFrom fnName fns)
-      fns'' = [ (fnName, simplifyFn fn) | (fnName, fn) <- fns' ]
+  (fn, st, synFns) <- runSynth defaultState ctx problem
+  let fns = map (second assembleFn) synFns
+      fns' = [ (fnName, simplifyFn fn) | (fnName, fn) <- fns ]
+      fns'' = removeFnsUnusedBy fnName (unwindFrom fnName fns')
   return $ SynthResult fnName fns'' (maxDepth st)
   where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts
                       , mayUseHomoRule = False, homoAvoidance = 3, noEgsAvoidance = 1 }
@@ -432,7 +434,7 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
         -- attempt to recurse on this function, as well as all previously defined functions.
         -- TODO: various things need to be updated to account for this, for example retType in
         -- possibleRecursiveArgs.
-        forEach possibleRecFns $ \f -> do 
+        forEach possibleRecFns $ \f -> do
           debug $ "attempting recursion on: " ++ f
           -- for each constructor in the datatype, see if we can find recursive arguments
           -- consisting of parts of the constructor. either way, keep track of whether or
@@ -448,7 +450,7 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
 
             let possibleRecArgs = forM args $ \(_, ArgInfo t _) ->
                   possibleRecursiveArgs t constructorArgs
-            
+
             debug $ "for " ++ con ++ ", possibleRecArgs = " ++ show possibleRecArgs
 
             -- let recursiveArgs = forM args $ \(_, ArgInfo t _) -> chooseRecursiveArg t constructorArgs
@@ -465,7 +467,7 @@ synthRecurse = eachArg "recurse" $ \splitOn args retType fnName -> do
 
             return [ (caseFnName, allArgs, recursivePart, con, constructorParams, bodyArgs)
                    | (recursivePart, bodyArgs) <- r ]
-          
+
           debug $ "all possible cases:" ++ show (zip concreteConstructors possibleCases)
 
           forEach (transpose possibleCases) $ \cases -> do
@@ -967,9 +969,8 @@ type Functions = [(Ident, Function)]
 
 type Unwind = S.State Functions
 
-unwindFrom :: Ident -> SynthFunctions -> Functions
-unwindFrom x fns = S.execState (unwindFn x) fns'
-  where fns' = [ (name, assembleFn fn) | (name, fn) <- fns ]
+unwindFrom :: Ident -> Functions -> Functions
+unwindFrom x = S.execState (unwindFn x)
 
 unwindFn :: Ident -> Unwind ()
 unwindFn f = do
@@ -981,7 +982,9 @@ unwind :: Expr -> Unwind Expr
 unwind (Var x) = do
   fn <- lookupU x
   case fn of
-    Just Function{ fnBody = body, fnArgs = [] } -> unwind body
+    Just Function{ fnBody = body, fnArgs = [] } -> do
+      unwindFn x
+      unwind body
     _ -> return $ Var x
 unwind app@(App e1 e2) = case unfoldApp app of
     (Var x, args) -> do
