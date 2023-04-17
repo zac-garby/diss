@@ -56,6 +56,7 @@ prettyTerm c@(CCons h t) = do
   ts <- clist2list c
   strings <- mapM prettyTerm ts
   return $ "[" ++ intercalate ", " strings ++ "]"
+prettyTerm (CConstr "Nil") = Just $ colour 32 "[]"
 prettyTerm (CConstr c) = Just $ colour 32 c
 prettyTerm (fn :$ arg) = do
   fn' <- prettyTerm fn
@@ -107,7 +108,6 @@ prettyTypes env = intercalate "\n" [ "  " ++ colour 33 (leftPad longestName (ppr
 prettyFunction :: Ident -> Function -> String
 prettyFunction name (Function args ret body egs) =
   name ++ " : " ++ intercalate " -> " (map prettyType (map snd args ++ [ret])) ++ "\n"
-    -- ++ "  { " ++ intercalate "\n  ; " (map prettyExample egs) ++ " }\n" ++
     ++ name ++ " " ++ unwords (map fst args) ++ " = " ++ prettyExpr body
 
 prettyExample :: Example -> String

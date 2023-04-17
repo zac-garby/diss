@@ -18,7 +18,7 @@ import Control.Monad.Except
 import Control.Monad.State.Strict
 import Debug.Trace
 
-import Graphics.Vty ((<|>))
+import Graphics.Vty ((<|>), (<->))
 
 import Parser
 import Types
@@ -182,7 +182,7 @@ beginSynthesis f t = do
     V.mkVty cfg
 
   (res, st) <- runStateT runSynthesiser
-    (SynthesiserState f t [ (replicate len "", "") ] [ (replicate len Nothing, Nothing) ] [] 0 0 len [] 1 vty)
+    (SynthesiserState f t [ (replicate len "", "") ] [ (replicate len Nothing, Nothing) ] [] 0 0 len [] 3 vty)
 
   liftIO $ do
     V.shutdown vty
@@ -239,15 +239,15 @@ renderSynthesiser = do
               , let start = if j == 0 then "{ " else ", "
               , let end = if j + 1 == length egs then " }" else "" ]
            ++ [ white (replicate 32 '━') ]
-           ++ [ green $ "synthesised " ++ show (length res) ++ " results" ]
-           ++ [ green $ "  (using " ++ show (length egsActual) ++ " examples)" ]
-           ++ map (white . prettyExample) egsActual
+           ++ [ green $ "synthesised " ++ show (length res) ++ " results:",
+                white $ replicate 64 ' ' ]
            ++ case res of
                 [] -> [ red "could not synthesise" ]
-                res -> 
-                  [ V.vertCat fns'
-                  | SynthResult root fns depthUsed <- res
-                  , let fns' = concatMap (map white . lines . uncurry prettyFunction) fns ]
+                res ->
+                  [ white ("result #" ++ show i) <-> V.translateX 2 fnsImg <-> white (replicate 64 ' ')
+                  | (i, SynthResult root fns depthUsed) <- zip [1..] res
+                  , let fnImgs = map (V.vertCat . (map white . lines . uncurry prettyFunction)) fns
+                  , let fnsImg = V.vertCat fnImgs ]
       pic = V.picForImage (V.pad 8 4 8 4 $ V.vertCat theLines)
 
   return pic
@@ -305,7 +305,8 @@ synthesiserUpdateSelected f = do
                                  | (i, inp, inpP) <- zip3 [0..] ins insP ]
                     , let out' = if (j, col) == (row, numIns) then v else outP ] }
 
-  synthesiserDoSynthesis
+  when (txt /= f txt) synthesiserDoSynthesis
+  
   where parseMaybe s = case runExcept $ parseExpr "synth" s of
           Left pe -> Nothing
           Right ex -> Just ex
@@ -320,7 +321,7 @@ synthesiserDoSynthesis = do
         return $ Eg ins' out'
 
   e <- lift get
-  let res = synthesiseInEnvironment e f t egs
+  let res = nub (synthesiseInEnvironment e f t egs)
   modify $ \st -> st { results = take numRes res, egsActual = egs }
 
 testHead env = synthesiseInEnvironment env "head" (tyList (TyVar "a") --> TyVar "a")
@@ -356,22 +357,22 @@ loadFile file = do
   p <- parseProgram file s ?? SyntaxErr
   typecheckProgram p
 
-  env <- get
-  case testF env of
-    [] -> liftIO $ putStrLn "synthesis failed! :("
-    xs -> do
-      --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"
-      forM_ (zip [1..3] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
-        putStrLn $ "attempt #" ++ show num ++ ", reached depth = " ++ show d ++ ":"
-        putStrLn $ "synthesised " ++ show (length fns) ++ " function(s)"
-        putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
+  -- env <- get
+  -- case testF env of
+  --   [] -> liftIO $ putStrLn "synthesis failed! :("
+  --   xs -> do
+  --     --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"
+  --     forM_ (zip [1..3] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
+  --       putStrLn $ "attempt #" ++ show num ++ ", reached depth = " ++ show d ++ ":"
+  --       putStrLn $ "synthesised " ++ show (length fns) ++ " function(s)"
+  --       putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
 
-        putStr "   (press <return> for another try...)"
-        hFlush stdout
-        getLine
-        putStrLn ""
-        --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
-        --putStrLn $ "compiled = " ++ show term -}
+  --       putStr "   (press <return> for another try...)"
+  --       hFlush stdout
+  --       getLine
+  --       putStrLn ""
+  --       --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
+  --       --putStrLn $ "compiled = " ++ show term -}
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
