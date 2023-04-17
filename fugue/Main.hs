@@ -350,11 +350,6 @@ testF env = synthesiseInEnvironment env "f" (tyList (TyVar "a") --> tyList (TyVa
   [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))
   , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1] :: [Int])) ]
 
-testF env = synthesiseInEnvironment env "f"
-  (tyList (TyVar "a") --> tyList (TyVar "a"))
-  [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))
-  , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1] :: [Int])) ]
-
 loadFile :: String -> Interactive ()
 loadFile file = do
   s <- liftIO $ readFile file

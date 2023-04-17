@@ -606,11 +606,11 @@ replaceThunkCall f t (ThunkRecLet th deps fn fnArgs) = error "replaceThunkCall n
 replaceThunkCall f t (ThunkTerm t') = ThunkTerm t'
 
 debug :: String -> Synth ()
--- debug _ = return ()
-debug s = do
-  d <- asks depth
-  let prefix = concat (replicate d "* ")
-  traceM $ prefix ++ s
+debug _ = return ()
+-- debug s = do
+--   d <- asks depth
+--   let prefix = concat (replicate d "* ")
+--   traceM $ prefix ++ s
 
 hasVal :: Arg -> ClosedTerm -> Bool
 hasVal (Val v) t = v == t
