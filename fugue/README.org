@@ -5,3 +5,5 @@
    - Typed holes and hole inference
    - A built-in Hoogle-like interface for searching the environment
    - An optional prelude
+   - User-defined data-types
+   - A built-in program synthesis engine, _Fantasia_.
