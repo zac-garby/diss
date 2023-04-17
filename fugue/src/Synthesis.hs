@@ -306,7 +306,7 @@ synthCommonConstr args retType fnName = do
     Just con -> do
       egs <- asks examples
 
-      Forall _ conTy <- lookupType' con
+      (Forall _ conTy) <- lookupType' con
       let (conArgTys, _) = unfoldFnTy (specialiseConstructor conTy retType)
           (conArgs, apps) = unzip [ (args, deconstruct' o) | Eg args o <- egs ]
           (cons, argsByCon) = unzip apps
@@ -606,11 +606,11 @@ replaceThunkCall f t (ThunkRecLet th deps fn fnArgs) = error "replaceThunkCall n
 replaceThunkCall f t (ThunkTerm t') = ThunkTerm t'
 
 debug :: String -> Synth ()
-debug _ = return ()
--- debug s = do
---   d <- asks depth
---   let prefix = concat (replicate d "* ")
---   traceM $ prefix ++ s
+-- debug _ = return ()
+debug s = do
+  d <- asks depth
+  let prefix = concat (replicate d "* ")
+  traceM $ prefix ++ s
 
 hasVal :: Arg -> ClosedTerm -> Bool
 hasVal (Val v) t = v == t
@@ -737,15 +737,16 @@ lookupType x = do
   return $ fmap fst (lookup x ts)
 
 lookupType' :: Ident -> Synth Scheme
-lookupType' x = fromJust <$> lookupType x
+lookupType' x = do
+  t <- lookupType x
+  case t of
+    Nothing -> error $ "synth: couldn't find type: " ++ x
+    Just t -> return t
 
 lookupFn :: Ident -> Synth (Maybe SynthFunction)
 lookupFn x = do
   fns <- asks fns
   return $ lookup x fns
-
-lookupFn' :: Ident -> Synth SynthFunction
-lookupFn' x = fromJust <$> lookupFn x
 
 withExamples :: [Example] -> Synth a -> Synth a
 withExamples egs = local (\l -> l { examples = egs })
@@ -945,12 +946,6 @@ applyMany = foldl1 App
 
 applyManyIdents :: [Ident] -> Expr
 applyManyIdents = applyMany . map Var
-
-unfoldFnTy :: Type -> ([Type], Type)
-unfoldFnTy (TyConstr "->" [a, b]) =
-  let (rest, ret) = unfoldFnTy b
-  in (a : rest, ret)
-unfoldFnTy t = ([], t)
 
 unfoldApp :: Expr -> (Expr, [Expr])
 unfoldApp (App f x) =

@@ -24,7 +24,8 @@ module Types ( GenericType (..)
              , allVars
              , rename
              , makeRenamer
-             , renameToDistinct ) where
+             , renameToDistinct
+             , unfoldFnTy ) where
 
 import Control.Monad.State.Lazy
 import Data.List
@@ -183,3 +184,9 @@ renameToDistinct t1 t2
         fv2 = freeVars t2
         inCommon = fv1 `intersect` fv2
         s = [(v, TyVar (v ++ "'")) | v <- inCommon]
+
+unfoldFnTy :: Type -> ([Type], Type)
+unfoldFnTy (TyConstr "->" [a, b]) =
+  let (rest, ret) = unfoldFnTy b
+  in (a : rest, ret)
+unfoldFnTy t = ([], t)

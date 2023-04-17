@@ -44,7 +44,7 @@ library
 executable fugue
     main-is:          Main.hs
 
-    ghc-options: -O2
+    ghc-options: -O2 -threaded
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -54,6 +54,7 @@ executable fugue
                   , parsec ^>=3.1.15.0
                   , fugue
                   , time
+                  , vty
 
     -- Directories containing source files.
     -- hs-source-dirs:
