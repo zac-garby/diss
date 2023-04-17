@@ -346,11 +346,9 @@ testStutter env = synthesiseInEnvironment env "stutter" (tyList (TyVar "a") --> 
   --, Eg [toVal' ([1] :: [Int])] (toClosed' ([1, 1] :: [Int]))
   , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1, 1, 2, 2] :: [Int])) ]
 
-testZip env = synthesiseInEnvironment env "zip"
-  (tyList (TyVar "a") --> tyList (TyVar "b") --> tyList (tyPair [TyVar "a", TyVar "b"]))
-  [ Eg [toVal' ([] :: [Int]), toVal' ([] :: [Int])] (toClosed' ([] :: [(Int, Int)]))
-  , Eg [toVal' ([1] :: [Int]), toVal' ([] :: [Int])] (toClosed' ([] :: [(Int, Int)]))
-  , Eg [toVal' ([1, 2] :: [Int]), toVal' ([2, 3] :: [Int])] (toClosed' ([(1, 2), (2, 3)] :: [(Int, Int)])) ]
+testF env = synthesiseInEnvironment env "f" (tyList (TyVar "a") --> tyList (TyVar "a"))
+  [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))
+  , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1] :: [Int])) ]
 
 testF env = synthesiseInEnvironment env "f"
   (tyList (TyVar "a") --> tyList (TyVar "a"))

@@ -168,7 +168,7 @@ synthesise env dts fnName goal egs = do
   return $ SynthResult fnName fns'' (maxDepth st)
   where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts
                       , mayUseHomoRule = False, homoAvoidance = 3, noEgsAvoidance = 1 }
-        defaultState = SynthState { newNames = allVars, maxDepth = 0 }
+        defaultState = SynthState { newNames = filter (/= fnName) allVars, maxDepth = 0 }
         (goalArgs, goalRet) = unfoldFnTy goal
         problem = (upToDepth 16 ... synth fnName) [ ArgInfo t True | t <- goalArgs ] goalRet
 
