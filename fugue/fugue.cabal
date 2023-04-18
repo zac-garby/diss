@@ -55,6 +55,7 @@ executable fugue
                   , parsec ^>=3.1.15.0
                   , fugue
                   , time
+                  , transformers
                   , vty
 
     -- Directories containing source files.

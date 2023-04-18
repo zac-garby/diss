@@ -1,6 +1,5 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use list literal pattern" #-}
-{-# LANGUAGE LambdaCase #-}
 
 module Main where
 
@@ -296,8 +295,17 @@ synthesiserUpdateSelected f = do
   v <- case parseMaybe (f txt) of
     Nothing -> return Nothing
     Just ex -> do
-      t <- lift $ handleExpr ex
-      return $ Just t
+      let (argTys, retTy) = unfoldFnTy t
+          reqTy = if col == numIns then retTy else argTys !! col
+      t <- lift . tryError $ do
+        actualTy <- typecheckTerm ex
+        if finalise reqTy <= actualTy then
+          handleExpr ex
+        else
+          throwError $ TypeErr $ TypeSpecMismatch actualTy (finalise reqTy)
+      return $ case t of
+        Left er -> Nothing
+        Right te -> Just te
 
   modify $ \st ->
     st { egStrings = [ (ins', out')

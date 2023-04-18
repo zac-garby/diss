@@ -166,7 +166,7 @@ synthesise env dts fnName goal egs = do
   (fn, st, synFns) <- runSynth defaultState ctx problem
   let fns = map (second assembleFn) synFns
       fns' = [ (fnName, simplifyFn fn) | (fnName, fn) <- fns ]
-      fns'' = removeFnsUnusedBy fnName (unwindFrom fnName fns')
+      fns'' = removeFnsUnusedBy fnName (windFrom fnName fns')
   return $ SynthResult fnName fns'' (maxDepth st)
   where ctx = Context { examples = egs, depth = 0, env = env, fns = [], dataTypes = dts
                       , mayUseHomoRule = False, homoAvoidance = 3, noEgsAvoidance = 1 }
@@ -836,7 +836,9 @@ applyBody params body args = case body of
     SynthRecurse x cases ->
       let (con, conArgs) = deconstruct' (get x)
           (_, conParams, recPart, fnName, fnArgs) =
-            fromJust $ find (\(con', _, _, _, _) -> con == con') cases
+            case find (\ (con', _, _, _, _) -> con == con') cases of
+              Nothing -> error $ "couldn't find case " ++ con ++ " in cases: " ++ show cases
+              Just x -> x
           allArgs = zip (params ++ conParams) (args ++ conArgs)
       in case recPart of
         Recurse recBinding recCall recArgs ->
@@ -967,61 +969,61 @@ instance Eq Function where
 
 type Functions = [(Ident, Function)]
 
-type Unwind = S.State Functions
+type Wind = S.State Functions
 
-unwindFrom :: Ident -> Functions -> Functions
-unwindFrom x = S.execState (unwindFn x)
+windFrom :: Ident -> Functions -> Functions
+windFrom x = S.execState (windFn x)
 
-unwindFn :: Ident -> Unwind ()
-unwindFn f = do
+windFn :: Ident -> Wind ()
+windFn f = do
   Function args ret body egs <- lookupU' f
-  body' <- unwind body
+  body' <- wind body
   S.modify (insertFn f (Function args ret body' egs))
 
-unwind :: Expr -> Unwind Expr
-unwind (Var x) = do
+wind :: Expr -> Wind Expr
+wind (Var x) = do
   fn <- lookupU x
   case fn of
     Just Function{ fnBody = body, fnArgs = [] } -> do
-      unwindFn x
-      unwind body
+      windFn x
+      wind body
     _ -> return $ Var x
-unwind app@(App e1 e2) = case unfoldApp app of
+wind app@(App e1 e2) = case unfoldApp app of
     (Var x, args) -> do
       fn <- lookupU x
       case fn of
         Just fn -> if canInline x fn then inline x args else app'
         Nothing -> app'
     _ -> app'
-  where app' = App <$> unwind e1 <*> unwind e2
-unwind (Abs x e) = Abs x <$> unwind e
-unwind (Let x e1 e2) = Let x <$> unwind e1 <*> unwind e2
-unwind (LetRec x e1 e2) = LetRec x <$> unwind e1 <*> unwind e2
-unwind (If e1 e2 e3) = If <$> unwind e1 <*> unwind e2 <*> unwind e3
-unwind (Case e cases) = do
+  where app' = App <$> wind e1 <*> wind e2
+wind (Abs x e) = Abs x <$> wind e
+wind (Let x e1 e2) = Let x <$> wind e1 <*> wind e2
+wind (LetRec x e1 e2) = LetRec x <$> wind e1 <*> wind e2
+wind (If e1 e2 e3) = If <$> wind e1 <*> wind e2 <*> wind e3
+wind (Case e cases) = do
   cases' <- forM cases $ \(x, xs, b) -> do
-    b' <- unwind b
+    b' <- wind b
     return (x, xs, b')
 
-  Case <$> unwind e <*> return cases'
-unwind (LitInt n) = return $ LitInt n
-unwind (LitList xs) = LitList <$> mapM unwind xs
-unwind (LitTuple xs) = LitTuple <$> mapM unwind xs
-unwind (LitChar c) = return $ LitChar c
-unwind (TypeSpec e t) = TypeSpec <$> unwind e <*> return t
-unwind (Hole n) = return $ Hole n
+  Case <$> wind e <*> return cases'
+wind (LitInt n) = return $ LitInt n
+wind (LitList xs) = LitList <$> mapM wind xs
+wind (LitTuple xs) = LitTuple <$> mapM wind xs
+wind (LitChar c) = return $ LitChar c
+wind (TypeSpec e t) = TypeSpec <$> wind e <*> return t
+wind (Hole n) = return $ Hole n
 
-inline :: Ident -> [Expr] -> Unwind Expr
+inline :: Ident -> [Expr] -> Wind Expr
 inline f args = do
-  unwindFn f
+  windFn f
   Function fnArgs _ fnBody _ <- lookupU' f
   let arguments = zip (map fst fnArgs) args
   return $ subExpr arguments fnBody
 
-lookupU :: Ident -> Unwind (Maybe Function)
+lookupU :: Ident -> Wind (Maybe Function)
 lookupU f = fmap (lookup f) S.get
 
-lookupU' :: Ident -> Unwind Function
+lookupU' :: Ident -> Wind Function
 lookupU' f = fmap fromJust (lookupU f)
 
 canInline :: Ident -> Function -> Bool
