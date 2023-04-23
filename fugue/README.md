@@ -1,4 +1,4 @@
-* Fugue
+# Fugue
 
 A functional programming language with a number of useful features:
   - Polymorphic types, with full type inference
@@ -13,7 +13,7 @@ To build:
   2. Install the Haskell toolchain (GHC, Cabal).
   3. Run `cabal new-run` in the root directory.
 
-* Fantasia
+# Fantasia
 
 The focus of my 4th year Research project. A synthesis engine built right into Fugue!
 
