@@ -4,6 +4,12 @@ data Maybe a = Nothing | Just a;
 
 data Bool = True | False;
 
+data Unit = Unit;
+
+data Pair a b = Pair a b;
+
+data Tree a = Leaf a | Node (Tree a) (Tree a);
+
 (.) : (b -> c) -> (a -> b) -> a -> c;
 (.) f g x = f (g x);
 
@@ -13,21 +19,6 @@ data Bool = True | False;
 id : a -> a;
 id x = x;
 
-head : List a -> Maybe a;
-head xs = case xs of
-  Nil -> Nothing,
-  Cons x xs -> Just x;
-
-tail : List a -> Maybe (List a);
-tail xs = case xs of
-  Nil -> Nothing,
-  Cons x xs -> Just xs;
-
-null : List a -> Bool;
-null xs = case xs of
-  Nil -> True,
-  Cons x xs -> False;
-
 not : Bool -> Bool;
 not b = case b of
   True -> False,
@@ -35,6 +26,14 @@ not b = case b of
 
 (=/=) : a -> a -> Bool;
 (=/=) x y = not (x == y);
+
+fst : Pair a b -> a;
+fst p = case p of
+  Pair a _ -> a;
+
+snd : Pair a b -> b;
+snd p = case p of
+  Pair _ b -> b;
 
 flip : (a -> b -> c) -> b -> a -> c;
 flip f x y = f y x;
@@ -48,10 +47,10 @@ const x y = x;
 (||) : Bool -> Bool -> Bool;
 (||) x y = if x then True else y;
 
-curry : ((a, b) -> c) -> a -> b -> c;
+curry : (Pair a b -> c) -> a -> b -> c;
 curry f x y = f (x, y);
 
-uncurry : (a -> b -> c) -> (a, b) -> c;
+uncurry : (a -> b -> c) -> Pair a b -> c;
 uncurry f p = f (fst p) (snd p);
 
 neg : Int -> Int;
@@ -85,185 +84,45 @@ even x = x % 2 == 0;
 odd : Int -> Bool;
 odd x = x % 2 =/= 0;
 
-(++) : [a] -> [a] -> [a];
+head : List a -> Maybe a;
+head xs = case xs of
+  Nil -> Nothing,
+  Cons x xs -> Just x;
+
+tail : List a -> Maybe (List a);
+tail xs = case xs of
+  Nil -> Nothing,
+  Cons x xs -> Just xs;
+
+null : List a -> Bool;
+null xs = case xs of
+  Nil -> True,
+  Cons x xs -> False;
+
+(++) : List a -> List a -> List a;
 (++) xs ys = case xs of
   Nil -> ys,
   Cons x xs -> x :: (xs ++ ys);  
 
-(!) : [a] -> Int -> Maybe a;
-(!) xs i =
-  if i == 0
-  then head xs
-  else tail xs ! (i - 1);
+(!) : List a -> Int -> Maybe a;
+(!) xs i = case xs of
+  Nil -> Nothing,
+  Cons x xs -> if i == 0 then
+  	   	 	     Just x
+			   else
+			     xs ! (i - 1);
 
-reverse : [a] -> [a];
+reverse : List a -> List a;
 reverse xs =
-  let rec rev-aux xs acc =
-    if null xs
-	then acc
-	else rev-aux (tail xs) (head xs :: acc)
+  let rec rev-aux xs acc = case xs of
+    Nil -> acc,
+	Cons x xs -> rev-aux xs (x :: acc)
   in rev-aux xs [];
 
-take : Int -> [a] -> [a];
-take n xs =
-  if n == 0
-  then []
-  else head xs :: take (n - 1) (tail xs);
-
-drop : Int -> [a] -> [a];
-drop n xs =
-  if n == 0
-  then xs
-  else drop (n - 1) (tail xs);
-
-span : (a -> Bool) -> [a] -> ([a], [a]);
-span p xs =
-  if null xs
-  then ([], [])
-  else if p (head xs)
-       then let rest = span p (tail xs)
-            in ( head xs :: fst rest
-	           , snd rest)
-       else ([], xs);
-
-takeWhile : (a -> Bool) -> [a] -> [a];
-takeWhile p xs = fst (span p xs);
-
-dropWhile : (a -> Bool) -> [a] -> [a];
-dropWhile p xs = snd (span p xs);
-
-elem : a -> [a] -> Bool;
-elem x xs =
-  if null xs
-  then False
-  else if head xs == x
-       then True
-       else elem x (tail xs);
-
-range : Int -> Int -> [Int];
-range m n =
-  if m == n
-  then [m]
-  else m :: range (m + 1) n;
-
-map : (a -> b) -> [a] -> [b];
-map f xs =
-  if null xs
-  then []
-  else f (head xs) :: map f (tail xs);
-
-foldr : (a -> b -> b) -> b -> [a] -> b;
-foldr f z xs =
-  if null xs
-  then z
-  else f (head xs) (foldr f z (tail xs));
-
-foldl : (a -> b -> a) -> a -> [b] -> a;
-foldl f z xs =
-  if null xs
-  then z
-  else foldl f (f z (head xs)) (tail xs);
-
-sum : [Int] -> Int;
-sum = foldr (+) 0;
-
-product : [Int] -> Int;
-product = foldr (*) 1;
-
-and : [Bool] -> Bool;
-and = foldr (&&) True;
-
-or : [Bool] -> Bool;
-or = foldr (||) False;
-
-length : [a] -> Int;
-length xs =
-  if null xs
-  then 0
-  else 1 + length (tail xs);
-
-zipWith : (a -> b -> c) -> [a] -> [b] -> [c];
-zipWith f xs ys =
-  if null xs
-  then []
-  else if null ys
-       then []
-       else f (head xs) (head ys)
-         :: zipWith f (tail xs) (tail ys);
-
-zip : [a] -> [b] -> [(a, b)];
-zip = zipWith (\x y -> (x, y));
-
-unzip : [(a, b)] -> ([a], [b]);
-unzip xs =
-  if null xs
-  then ([], [])
-  else let rest = unzip (tail xs) in
-       let h = head xs in
-       (fst h :: fst rest, snd h :: snd rest);
-
-enumerate : [a] -> [(Int, a)];
-enumerate xs =
-  let rec go xs n =
-    if null xs
-    then []
-    else (n, head xs) :: go (tail xs) (n + 1)
-  in go xs 0;
-
-filter : (a -> Bool) -> [a] -> [a];
-filter p xs =
-  if null xs
-  then []
-  else let hd = head xs in
-  	   let tl = tail xs in
-	   if p hd
-	   then hd :: filter p tl
-	   else filter p tl;
-
-comparing : (a -> Int) -> a -> a -> Bool;
-comparing f x y = f x <= f y;
-
-init : [a] -> [a];
-init xs =
-  if length xs <= 1
-  then []
-  else head xs :: init (tail xs);
-
-last : [a] -> a;
-last xs =
-  if length xs == 1
-  then head xs
-  else last (tail xs);
-
-tails : [a] -> [[a]];
-tails xs =
-  if null xs
-  then [[]]
-  else xs :: tails (tail xs);
-
-concat : [[a]] -> [a];
-concat xs =
-  if null xs
-  then []
-  else head xs ++ concat (tail xs);
-
-maximum : [Int] -> Int;
-maximum xs =
-  if length xs == 1
-  then head xs
-  else max (head xs) (maximum (tail xs));
-
-minimum : [Int] -> Int;
-minimum xs =
-  if length xs == 1
-  then head xs
-  else min (head xs) (minimum (tail xs));
-
-lookup : a -> [(a, b)] -> [b];
-lookup x as =
-  if null as
-  then []
-  else let h = head as
-       in if fst h == x
-          then [snd h]
-          else lookup x (tail as);
+take : Int -> List a -> List a;
+take n xs = case xs of
+  Nil -> Nil,
+  Cons x xs' -> if n == 0 then
+                  Nil
+				else
+				  x :: take (n - 1) xs';
