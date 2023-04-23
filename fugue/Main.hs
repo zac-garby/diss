@@ -299,7 +299,7 @@ synthesiserUpdateSelected f = do
           reqTy = if col == numIns then retTy else argTys !! col
       t <- lift . tryError $ do
         actualTy <- typecheckTerm ex
-        if finalise reqTy <= actualTy then
+        if finalise reqTy <= actualTy || actualTy <= finalise reqTy then
           handleExpr ex
         else
           throwError $ TypeErr $ TypeSpecMismatch actualTy (finalise reqTy)

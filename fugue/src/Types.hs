@@ -90,7 +90,7 @@ instance Ord Scheme where
   a > b = b < a
 
 instance Ord Type where
-  t1 <= t2 = Forall [] t1 <= Forall [] t2
+  t1 <= t2 = finalise t1 <= finalise t2
 
 instance Functor GenericType where
   fmap f (TyVar v) = TyVar (f v)
