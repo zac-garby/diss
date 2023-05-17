@@ -217,10 +217,10 @@ updateSynthesiser ev = do
     V.EvKey V.KEsc mods -> return False
 
     V.EvKey (V.KChar '\t') [] -> synthsiserMove 1 0 >> return True
-    V.EvKey V.KUp [V.MShift] -> synthsiserMove 0 (-1) >> return True
-    V.EvKey V.KRight [V.MShift] -> synthsiserMove 1 0 >> return True
-    V.EvKey V.KDown [V.MShift] -> synthsiserMove 0 1 >> return True
-    V.EvKey V.KLeft [V.MShift] -> synthsiserMove (-1) 0 >> return True
+    V.EvKey V.KUp mods -> when (V.MShift `elem` mods) (synthsiserMove 0 (-1)) >> return True
+    V.EvKey V.KRight mods -> when (V.MShift `elem` mods) (synthsiserMove 1 0) >> return True
+    V.EvKey V.KDown mods -> when (V.MShift `elem` mods) (synthsiserMove 0 1) >> return True
+    V.EvKey V.KLeft mods -> when (V.MShift `elem` mods) (synthsiserMove (-1) 0) >> return True
     V.EvKey V.KEnter [] -> do
       modify $ \st -> st { egStrings = egStrings st ++ [ (replicate numIns "", "") ]
                          , egParsed = egParsed st ++ [ (replicate numIns Nothing, Nothing) ] }
@@ -237,21 +237,20 @@ updateSynthesiser ev = do
 renderSynthesiser :: StateT SynthesiserState Interactive V.Picture
 renderSynthesiser = do
   SynthesiserState f t egs parsed egsActual row col numIns res _ _ <- get
-  let maxWidths = map (length . maximumBy (comparing length)) (transpose (map fst egs))
-      theLines
-            = header
+  let theLines = header
            ++ [ green f <|> white " : " <|> white (show t) ]
            ++ [ grey start <|> V.horizCat (intersperse inSep ins') <|> arrow <|> out' <|> grey end
               | (j, (ins, out), (insP, outP)) <- zip3 [0..] egs parsed
-              , let ins' = [ pad (if (i, j) == (col, row) then
-                                    inputSel inp
-                                  else
-                                    maybe (inputNoParse inp) (inputBox . fromMaybe "..." . prettyTerm) inpP) l
-                           | (i, inp, inpP, l) <- zip4 [0..] ins insP maxWidths ]
+              , let ins' = [ if (i, j) == (col, row) then
+                               inputSel inp
+                             else
+                               maybe (inputNoParse inp) (inputBox . fromMaybe " !! " . prettyTermPlain) inpP
+                           | (i, inp, inpP) <- zip3 [0..] ins insP ]
               , let out' = if (j, col) == (row, numIns) then
                              inputSel out
                            else
-                             maybe (inputNoParse out) (inputBox . fromMaybe "..." . prettyTerm) outP
+                             maybe (inputNoParse out) (inputBox . fromMaybe "!!" . prettyTermPlain) outP
+                            --  maybe (inputNoParse out) (inputBox . show) outP
               , let start = if j == 0 then "{ " else ", "
               , let end = if j + 1 == length egs then " }" else "" ]
            ++ [ white (replicate 32 '━') ]
@@ -278,8 +277,6 @@ renderSynthesiser = do
         inSep = grey " "
         arrow = grey " → "
         fillOut xs = if null xs then " " else xs
-        pad p l = let diff = l - V.imageWidth p
-                  in if diff <= 0 then p else p <|> white (replicate diff ' ')
 
 synthsiserMove :: Int -> Int -> StateT SynthesiserState Interactive ()
 synthsiserMove x y = do
@@ -397,33 +394,6 @@ updateChooser ev = do
       Just n -> if n < numRes then return (Just $ res !! (n - 1)) else runSynthesiser
 
     _ -> runSynthesiser
-
-testHead env = synthesiseInEnvironment env "head" (tyList (TyVar "a") --> TyVar "a")
-  [ Eg [toVal' ([1, 2] :: [Int])] (toClosed' (1 :: Int))
-  , Eg [toVal' ([0, 2, 3] :: [Int])] (toClosed' (0 :: Int)) ]
-
-testDouble env = synthesiseInEnvironment env "double" (tyInt --> tyList tyInt --> tyList tyInt)
-  [ Eg [toVal' (0 :: Int), toVal' ([1] :: [Int])] (toClosed' ([0, 0, 1] :: [Int]))
-  , Eg [toVal' (2 :: Int), toVal' ([] :: [Int])] (toClosed' ([2, 2] :: [Int])) ]
-
-testIsOne env = synthesiseInEnvironment env "is_one" (tyInt --> tyBool)
-  [ Eg [toVal' (0 :: Int)] (toClosed' False)
-  , Eg [toVal' (1 :: Int)] (toClosed' True)
-  , Eg [toVal' (2 :: Int)] (toClosed' False) ]
-
-testLength env = synthesiseInEnvironment env "length" (tyList (TyVar "a") --> tyInt)
-  [ Eg [toVal' ([] :: [Int])] (toClosed' (0 :: Int))
-  , Eg [toVal' ([1] :: [Int])] (toClosed' (1 :: Int))
-  , Eg [toVal' ([3, 2, 1] :: [Int])] (toClosed' (3 :: Int)) ]
-
-testStutter env = synthesiseInEnvironment env "stutter" (tyList (TyVar "a") --> tyList (TyVar "a"))
-  [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))
-  --, Eg [toVal' ([1] :: [Int])] (toClosed' ([1, 1] :: [Int]))
-  , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1, 1, 2, 2] :: [Int])) ]
-
-testF env = synthesiseInEnvironment env "f" (tyList (TyVar "a") --> tyList (TyVar "a"))
-  [ Eg [toVal' ([] :: [Int])] (toClosed' ([] :: [Int]))
-  , Eg [toVal' ([1, 2] :: [Int])] (toClosed' ([1] :: [Int])) ]
 
 loadFile :: String -> Interactive ()
 loadFile file = do

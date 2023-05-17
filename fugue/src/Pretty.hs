@@ -1,6 +1,8 @@
 module Pretty ( prettyExpr
               , prettyTerm
               , prettyTerm'
+              , prettyTermPlain
+              , prettyTermPlain'
               , prettyType
               , prettyScheme
               , prettyTypes
@@ -115,11 +117,42 @@ prettyTerm _ = Nothing
 prettyTerm' :: Term -> String
 prettyTerm' t = fromMaybe (show t) (prettyTerm t)
 
+prettyTermPlain :: Term -> Maybe String
+prettyTermPlain (CInt i) = Just $ show i
+prettyTermPlain (CChar c) = Just $ show c
+prettyTermPlain c@(CCons (CChar _) _) = do
+  cs <- clist2list c
+  return $ "\"" ++ map (\(CChar c) -> c) cs ++ "\""
+prettyTermPlain c@(CCons h t) = do
+  ts <- clist2list c
+  strings <- mapM prettyTermPlain ts
+  return $ "[" ++ intercalate ", " strings ++ "]"
+prettyTermPlain (CConstr "Nil") = Just "[]"
+prettyTermPlain (CConstr c) = Just c
+prettyTermPlain (fn :$ arg) = do
+  fn' <- prettyTermPlain fn
+  arg' <- bracketTerm arg
+  Just $ fn' ++ " " ++ arg'
+prettyTermPlain CUnit = return "()"
+prettyTermPlain (CPair x y) = do
+  xs' <- mapM prettyTermPlain [x, y]
+  return $ "(" ++ intercalate ", " xs' ++ ")"
+prettyTermPlain _ = Nothing
+
+prettyTermPlain' :: Term -> String
+prettyTermPlain' t = fromMaybe (show t) (prettyTermPlain t)
+
 bracketTerm :: Term -> Maybe String
 bracketTerm t@(CApp _ _) = do
   t' <- prettyTerm t
   return $ "(" ++ t' ++ ")"
 bracketTerm t = prettyTerm t
+
+bracketTermPlain :: Term -> Maybe String
+bracketTermPlain t@(CApp _ _) = do
+  t' <- prettyTermPlain t
+  return $ "(" ++ t' ++ ")"
+bracketTermPlain t = prettyTermPlain t
 
 prettyType :: Type -> String
 prettyType (TyVar v) = colour (92 + m) v
