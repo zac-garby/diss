@@ -131,13 +131,28 @@ prettyType (TyConstr c []) = colour 32 c
 prettyType (TyConstr c ts) = colour 32 c ++ " " ++ unwords (map bracketTypeApp ts)
 prettyType (TyHole i) = colour 91 (show i ++ "?")
 
+prettyType' :: Type -> String
+prettyType' (TyVar v) = v
+prettyType' (TyConstr "->" [l,r]) = bracketType' l ++ " → " ++ prettyType' r
+prettyType' (TyConstr c []) = c
+prettyType' (TyConstr c ts) = c ++ " " ++ unwords (map bracketTypeApp' ts)
+prettyType' (TyHole i) = show i ++ "?"
+
 bracketType :: Type -> String
 bracketType t@(TyConstr "->" _) = "(" ++ prettyType t ++ ")"
 bracketType t = prettyType t
 
+bracketType' :: Type -> String
+bracketType' t@(TyConstr "->" _) = "(" ++ prettyType' t ++ ")"
+bracketType' t = prettyType' t
+
 bracketTypeApp :: Type -> String
 bracketTypeApp t@(TyConstr _ (_:_)) = "(" ++ prettyType t ++ ")"
 bracketTypeApp t = bracketType t
+
+bracketTypeApp' :: Type -> String
+bracketTypeApp' t@(TyConstr _ (_:_)) = "(" ++ prettyType' t ++ ")"
+bracketTypeApp' t = bracketType' t
 
 prettyScheme :: Scheme -> String
 prettyScheme (Forall [] t) = prettyType t
@@ -162,7 +177,7 @@ prettyFunctionImg name (Function args ret body egs) =
   where white = V.string (V.defAttr `V.withForeColor` V.brightWhite)
         grey = V.string (V.defAttr `V.withForeColor` V.white)
         green = V.string (V.defAttr `V.withForeColor` V.brightGreen)
-        ty = V.horizCat $ intersperse (grey " → ") (map (white . prettyType) (map snd args ++ [ret]))
+        ty = V.horizCat $ intersperse (grey " → ") (map (white . prettyType') (map snd args ++ [ret]))
         argImg = if null args then
             white ""
           else

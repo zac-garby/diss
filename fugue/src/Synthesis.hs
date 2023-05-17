@@ -16,6 +16,7 @@ module Synthesis
 
   , synthesise
   , synthesiseInEnvironment
+  , assemble
   , toVal
   , toVal'
   , toClosed
@@ -308,7 +309,7 @@ synthCommonConstr args retType fnName = do
     Just con -> do
       egs <- asks examples
 
-      (Forall _ conTy) <- lookupType' con
+      Just (Forall _ conTy) <- lookupType con
       let (conArgTys, _) = unfoldFnTy (specialiseConstructor conTy retType)
           (conArgs, apps) = unzip [ (args, deconstruct' o) | Eg args o <- egs ]
           (cons, argsByCon) = unzip apps

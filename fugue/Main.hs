@@ -28,6 +28,7 @@ import Env
 import Pretty
 import Synthesis
 import Data.Functor
+import Text.Read (readMaybe)
 
 type Interactive = ExceptT Error (StateT Environment IO)
 
@@ -187,7 +188,17 @@ beginSynthesis f t = do
     V.shutdown vty
     putStrLn "synthesis finished."
 
-runSynthesiser :: StateT SynthesiserState Interactive ()
+  case res of
+    Nothing -> liftIO $ putStrLn "  (result not saved)"
+    Just SynthResult{ functions = functions } -> forM_ (reverse functions) $
+      \(fnName, Function args ret body _) -> do
+        e <- get
+        let fnExpr = foldr (Abs . fst) body args
+        let def = Definition fnName fnExpr
+        typecheckProgram [def]
+        liftIO $ putStrLn $ "  (defined function: " ++ fnName ++ ")"
+
+runSynthesiser :: StateT SynthesiserState Interactive (Maybe SynthResult)
 runSynthesiser = do
   v <- gets vty
   pic <- renderSynthesiser
@@ -195,7 +206,7 @@ runSynthesiser = do
     V.update v pic
     V.nextEvent v
   repeat <- updateSynthesiser ev
-  when repeat runSynthesiser
+  if repeat then runSynthesiser else chooseSynthesisResult
 
 updateSynthesiser :: V.Event -> StateT SynthesiserState Interactive Bool
 updateSynthesiser ev = do
@@ -269,16 +280,6 @@ renderSynthesiser = do
         fillOut xs = if null xs then " " else xs
         pad p l = let diff = l - V.imageWidth p
                   in if diff <= 0 then p else p <|> white (replicate diff ' ')
-        header = map green [ " __       ____          __           _     "
-                           , " \\ \\     / __/__ ____  / /____ ____ (_)__ _"
-                           , " /\\ \\   / _// _ `/ _ \\/ __/ _ `(_-</ / _ `/"
-                           , "/_/\\_\\ /_/  \\_,_/_//_/\\__/\\_,_/___/_/\\_,_/ "
-                           , "                                   & Fugue"
-                           , ""
-                           , "         [ESC] or [C-c] to exit"
-                           , "       [RET] to add a new example"
-                           , " [TAB] or [Shift + Arrows] to move around"
-                           , "" ]
 
 synthsiserMove :: Int -> Int -> StateT SynthesiserState Interactive ()
 synthsiserMove x y = do
@@ -320,7 +321,7 @@ synthesiserUpdateSelected f = do
                     , let out' = if (j, col) == (row, numIns) then v else outP ] }
 
   when (txt /= f txt) synthesiserDoSynthesis
-  
+
   where parseMaybe s = case runExcept $ parseExpr "synth" s of
           Left pe -> Nothing
           Right ex -> Just ex
@@ -337,6 +338,65 @@ synthesiserDoSynthesis = do
   e <- lift get
   let res = nub (synthesiseInEnvironment e f t egs)
   modify $ \st -> st { results = take numRes res, egsActual = egs }
+
+chooseSynthesisResult :: StateT SynthesiserState Interactive (Maybe SynthResult)
+chooseSynthesisResult = do
+  v <- gets vty
+  pic <- renderChooser
+  ev <- liftIO $ do
+    V.update v pic
+    V.nextEvent v
+  updateChooser ev
+
+renderChooser :: StateT SynthesiserState Interactive V.Picture
+renderChooser = do
+  SynthesiserState f t egs parsed egsActual row col numIns res _ _ <- get
+  let maxWidths = map (length . maximumBy (comparing length)) (transpose (map fst egs))
+      theLines
+            = header
+           ++ [ green f <|> white " : " <|> white (show t) ]
+           ++ map white [ ""
+                        , "  press the corresponding keys to pick a result,"
+                        , "  press ESCAPE to quit without saving,"
+                        , "  or press any other key to continue adding more examples."
+                        , "" ]
+           ++ case res of
+                [] -> [ red "could not synthesise" ]
+                res ->
+                  [ white ("PRESS: [" ++ show i ++ "]") <-> V.translateX 2 fnsImg <-> white (replicate 64 ' ')
+                  | (i, SynthResult root fns depthUsed) <- zip [1..] res
+                  , let fnImgs = map (uncurry prettyFunctionImg) (reverse fns)
+                  , let fnsImg = V.vertCat (intersperse inSep fnImgs) ]
+      pic = V.picForImage (V.pad 8 4 8 4 $ V.vertCat theLines)
+
+  return pic
+
+  where white = V.string (V.defAttr `V.withForeColor` V.brightWhite)
+        grey = V.string (V.defAttr `V.withForeColor` V.white)
+        green = V.string (V.defAttr `V.withForeColor` V.brightGreen)
+        red = V.string (V.defAttr `V.withForeColor` V.brightRed)
+        inputBox xs = V.string (V.defAttr `V.withForeColor` V.brightWhite `V.withBackColor` V.black) (fillOut xs)
+        inputSel xs = V.string (V.defAttr `V.withForeColor` V.black `V.withBackColor` V.brightWhite `V.withStyle` V.bold) (fillOut xs)
+        inputNoParse xs = V.string (V.defAttr `V.withForeColor` V.brightWhite `V.withBackColor` V.red `V.withStyle` V.bold) (fillOut xs)
+        inSep = grey " "
+        arrow = grey " → "
+        fillOut xs = if null xs then " " else xs
+        pad p l = let diff = l - V.imageWidth p
+                  in if diff <= 0 then p else p <|> white (replicate diff ' ')
+
+updateChooser :: V.Event -> StateT SynthesiserState Interactive (Maybe SynthResult)
+updateChooser ev = do
+  SynthesiserState f t egStrs parsed _ row col numIns res numRes _ <- get
+
+  case ev of
+    V.EvKey (V.KChar 'c') [V.MCtrl] -> return Nothing
+    V.EvKey V.KEsc mods -> return Nothing
+
+    V.EvKey (V.KChar ch) [] -> case readMaybe (ch : "") :: Maybe Int of
+      Nothing -> runSynthesiser
+      Just n -> if n < numRes then return (Just $ res !! (n - 1)) else runSynthesiser
+
+    _ -> runSynthesiser
 
 testHead env = synthesiseInEnvironment env "head" (tyList (TyVar "a") --> TyVar "a")
   [ Eg [toVal' ([1, 2] :: [Int])] (toClosed' (1 :: Int))
@@ -370,23 +430,6 @@ loadFile file = do
   s <- liftIO $ readFile file
   p <- parseProgram file s ?? SyntaxErr
   typecheckProgram p
-
-  -- env <- get
-  -- case testF env of
-  --   [] -> liftIO $ putStrLn "synthesis failed! :("
-  --   xs -> do
-  --     --liftIO $ putStrLn $ "synthesised " ++ show (length (take 5 xs)) ++ " functions"
-  --     forM_ (zip [1..3] (nub xs)) $ \(num, SynthResult i fns d) -> liftIO $ do
-  --       putStrLn $ "attempt #" ++ show num ++ ", reached depth = " ++ show d ++ ":"
-  --       putStrLn $ "synthesised " ++ show (length fns) ++ " function(s)"
-  --       putStrLn $ intercalate "\n\n" (map (uncurry prettyFunction) fns)
-
-  --       putStr "   (press <return> for another try...)"
-  --       hFlush stdout
-  --       getLine
-  --       putStrLn ""
-  --       --term <- compile (fromEnvironment env) (assemble fn) ?? CompileErr
-  --       --putStrLn $ "compiled = " ++ show term -}
 
 typecheckProgram :: Program -> Interactive ()
 typecheckProgram prog = do
@@ -445,3 +488,16 @@ insertConstructors name (DataType tyArgs constrs) = forM_ constrs $ \(DataConstr
 e ?? f = case runExcept e of
   Left err -> throwError (f err)
   Right val -> return val
+
+header :: [V.Image]
+header = map green [ " __       ____          __           _     "
+                    , " \\ \\     / __/__ ____  / /____ ____ (_)__ _"
+                    , " /\\ \\   / _// _ `/ _ \\/ __/ _ `(_-</ / _ `/"
+                    , "/_/\\_\\ /_/  \\_,_/_//_/\\__/\\_,_/___/_/\\_,_/ "
+                    , "                                   & Fugue"
+                    , ""
+                    , "         [ESC] or [C-c] to exit"
+                    , "       [RET] to add a new example"
+                    , " [TAB] or [Shift + Arrows] to move around"
+                    , "" ]
+  where green = V.string (V.defAttr `V.withForeColor` V.brightGreen)
