@@ -274,7 +274,7 @@ renderSynthesiser = do
         inputBox xs = V.string (V.defAttr `V.withForeColor` V.brightWhite `V.withBackColor` V.black) (fillOut xs)
         inputSel xs = V.string (V.defAttr `V.withForeColor` V.black `V.withBackColor` V.brightWhite `V.withStyle` V.bold) (fillOut xs)
         inputNoParse xs = V.string (V.defAttr `V.withForeColor` V.brightWhite `V.withBackColor` V.red `V.withStyle` V.bold) (fillOut xs)
-        inSep = grey " "
+        inSep = grey ", "
         arrow = grey " → "
         fillOut xs = if null xs then " " else xs
 

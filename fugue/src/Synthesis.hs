@@ -1087,9 +1087,7 @@ simplify (LetRec i v b)
 simplify (If c b1 b2) = If (simplify c) (simplify b1) (simplify b2)
 simplify (Case c cases) =
   let bodies' = [ simplify b | (_, _, b) <- cases ]
-  in case nub bodies' of
-    [unique] -> unique
-    _ -> Case c [ (con, conArgs, b') | ((con, conArgs, _), b') <- zip cases bodies' ]
+  in Case c [ (con, conArgs, b') | ((con, conArgs, _), b') <- zip cases bodies' ]
 simplify (LitList es) = LitList (map simplify es)
 simplify (LitTuple es) = LitTuple (map simplify es)
 simplify (TypeSpec e t) = TypeSpec (simplify e) t

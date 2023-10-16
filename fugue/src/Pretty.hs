@@ -131,7 +131,7 @@ prettyTermPlain (CConstr "Nil") = Just "[]"
 prettyTermPlain (CConstr c) = Just c
 prettyTermPlain (fn :$ arg) = do
   fn' <- prettyTermPlain fn
-  arg' <- bracketTerm arg
+  arg' <- bracketTermPlain arg
   Just $ fn' ++ " " ++ arg'
 prettyTermPlain CUnit = return "()"
 prettyTermPlain (CPair x y) = do
