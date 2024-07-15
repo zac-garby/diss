@@ -17,7 +17,8 @@ import Control.Monad.Except
 import Control.Monad.State.Strict
 import Debug.Trace
 
-import Graphics.Vty ((<|>), (<->))
+import Graphics.Vty ((<|>), (<->), defaultConfig)
+import Graphics.Vty.Platform.Unix (mkVty)
 
 import Parser
 import Types
@@ -177,9 +178,9 @@ beginSynthesis f t = do
   let (argTys, retTy) = unfoldFnTy t
   let len = length argTys
 
-  vty <- liftIO $ do
-    cfg <- V.standardIOConfig
-    V.mkVty cfg
+  vty <- liftIO (mkVty V.defaultConfig)
+--    cfg <- V.defaultConfig
+   
 
   (res, st) <- runStateT runSynthesiser
     (SynthesiserState f t [ (replicate len "", "") ] [ (replicate len Nothing, Nothing) ] [] 0 0 len [] 3 vty)
